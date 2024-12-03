@@ -2,7 +2,7 @@ import logging
 
 from flask_testing import TestCase
 
-from basic import init_api
+from easyearth import init_api
 
 
 class BaseTestCase(TestCase):

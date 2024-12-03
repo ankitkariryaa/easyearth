@@ -1,0 +1,68 @@
+openapi: 3.0.3
+info:
+  description: Basic image analysis app with Flask , Connexion and OpenApi 3
+  version: 0.0.1
+  title: Easy Earth example
+  contact:
+    email: ankit.ky@gmail.com
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+paths:
+  /predict:
+    post:
+      summary: Analyze an image with prompts
+      operationId: easyearth.controllers.predict_controller.is_alive
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                image_path:
+                  type: string
+                  description: Path to the image
+                embedding_path:
+                  type: string
+                  description: Path to the embedding (optional)
+                  nullable: true
+                prompts:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum: ["Point", "Box", "Text", "None"]
+                      data:
+                        type: object
+                        description: Prompt-specific data
+                        nullable: true
+                        example: {}
+              required:
+                - image_path
+                - prompts
+      responses:
+        "200":
+          description: Analysis response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model_description:
+                    type: string
+                  predictions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum: ["Class", "Points", "Polygons"]
+                        data:
+                          type: object
+                          description: Prediction-specific data
+servers:
+  - url: http://0.0.0.0:3781/v1/easyearth

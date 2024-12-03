@@ -1,8 +1,7 @@
-# Basic project with Flask , Connexion and OpenApi 3
+# Easy Earth project with Flask, Connexion and OpenApi 3
 
-[![Build Status](https://travis-ci.org/kevinmmartins/python-flask-connexion-example-openapi3.svg?branch=master)](https://travis-ci.org/kevinmmartins/python-flask-connexion-example-openapi3)
 
-Basic Python project using Flask and Connexion by Zalando
+EasyEarth Python project using Flask and Connexion
 
 ```http
 https://github.com/zalando/connexion
@@ -35,13 +34,21 @@ pip3 install -r test-requirements.txt
 ## Swagger definition
 
 ```http
-http://localhost:8081/v1/swagger.json
+http://localhost:3781/v1/easyearth/swagger.json
 ```
 
 ## Health Check
 
-```http
-http://localhost:8081/v1/basic/ping
+```
+curl -X POST http://127.0.0.1:3781/v1/easyearth/predict -H "Content-Type: application/json" -d '{
+  "image_path": "/path/to/image.jpg",
+  "embedding_path": "/path/to/embedding.bin",
+  "prompts": [
+    {"type": "Point", "data": {"x": 50, "y": 50}},
+    {"type": "Text", "data": {"text": "Example text"}}
+  ]
+}'
+
 ```
 
 ## Launch tests

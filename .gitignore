@@ -106,5 +106,5 @@ venv.bak/
 .idea
 
 /logs/*
-/basic/logs/*
-/basic/test/logs/*
+/easyearth/logs/*
+/easyearth/test/logs/*

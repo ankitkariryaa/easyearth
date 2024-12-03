@@ -2,7 +2,7 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
-LOGGER_NAME = "connexion_example"
+LOGGER_NAME = "easyearth_example"
 
 
 def create_log():
