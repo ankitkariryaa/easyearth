@@ -1,0 +1,36 @@
+# Ignore Git and Mercurial directories
+.git
+.hg
+
+# Ignore all bytecode
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore various log and data files that should not be included
+*.log
+*.csv
+*.dat
+*.out
+
+# Ignore OS generated files
+.DS_Store
+Thumbs.db
+
+# Ignore editor settings and folders
+.vscode
+.idea
+*.sublime-project
+*.sublime-workspace
+
+# Ignore virtual environment
+venv/
+env/
+
+# Ignore test and build artifacts
+build/
+dist/
+*.egg-info/
+tests/
+coverage/
