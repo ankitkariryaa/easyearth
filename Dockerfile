@@ -1,4 +1,4 @@
-FROM python:3.8.0b1-slim-stretch
+FROM python:3.10-slim
 
 RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
@@ -15,4 +15,4 @@ COPY . /usr/src/app
 EXPOSE 3781
 
 ENTRYPOINT [ "gunicorn" ]
-CMD ["-w", "2", "-b", "0.0.0.0:3781", "easyearth.wsgi"]
+CMD ["-w", "2", "-b", "0.0.0.0:3781", "easyearth.app:app"]
