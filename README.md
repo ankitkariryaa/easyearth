@@ -9,13 +9,14 @@ https://github.com/zalando/connexion
 
 ## Requirements
 
-* Docker Compose 1.21.2+
+* Docker Compose 1.21.2+ (see https://docs.docker.com/compose/install/)
 * Python 3.6 +
 
-## Run with Docker Compose
+## Run with Docker Compose in the project root directory
 
 ```bash
 # building the container
+cd /path/to/easyearth
 sudo docker-compose build
 
 # starting up a container
