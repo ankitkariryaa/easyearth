@@ -58,3 +58,11 @@ curl -X POST http://127.0.0.1:3781/v1/easyearth/predict -H "Content-Type: applic
 source venv/bin/activate
 tox
 ```
+
+## How does it work?
+on QGIS GUI
+1. select what model to use
+2. load embeddings or leave it empty
+3. create the prompt 
+All these info would be sent as a configuration file to the backend for prediction, then the backend would return the mask to the frontend for visualization.
+The frontend would then display the mask on the map, the user can then save the mask as a raster or vector file
