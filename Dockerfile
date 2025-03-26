@@ -8,7 +8,6 @@ RUN pip install --upgrade pip
 
 # Copy necessary files to the container
 COPY requirements.txt /usr/src/app/
-COPY requirements.txt /usr/src/app/
 # COPY download_models.py /usr/src/app/
 
 # Create a virtual environment in the container
@@ -18,7 +17,8 @@ RUN python3 -m venv .venv
 ENV PATH="/usr/src/app/.venv/bin:$PATH"
 
 # Install Python dependencies from the requirements file
-RUN pip3 install --no-cache-dir -r requirements.txt --upgrade && \
+RUN pip3 install --no-cache-dir -r requirements.txt --upgrade
+    # && \
     # Get the models from Hugging Face to bake into the container
     #     python3 download_models.py
 
