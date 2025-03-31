@@ -16,9 +16,12 @@ def generate_random_predictions():
             predictions.append({"type": "Polygons", "data": [[{"x": random.randint(0, 100), "y": random.randint(0, 100)} for _ in range(4)] for _ in range(random.randint(1, 3))]})
     return predictions
 
-def is_alive():
+def predict(request):
     response = {
         "model_description": "Mock Image Analysis Model v1.0",
         "predictions": generate_random_predictions()
     }
     return jsonify(response), 200
+
+def ping(request):
+    return jsonify({"message": "Server is alive"}), 200

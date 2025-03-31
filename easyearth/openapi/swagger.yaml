@@ -9,10 +9,25 @@ info:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
 paths:
+  /ping:
+    get:
+      summary: Check if the server is alive
+      operationId: easyearth.controllers.predict_controller.ping
+      responses:
+        200:
+          description: Server is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Server is alive"
   /predict:
     post:
       summary: Analyze an image with prompts
-      operationId: easyearth.controllers.predict_controller.is_alive
+      operationId: easyearth.controllers.predict_controller.predict
       requestBody:
         required: true
         content:
