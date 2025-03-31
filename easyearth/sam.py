@@ -11,6 +11,7 @@ from rasterio.features import shapes as get_shapes
 import numpy as np
 import geopandas as gpd
 
+from rasterio import features
 
 class Sam:
     def __init__(self, model_version="facebook/sam-vit-huge"):
@@ -71,7 +72,7 @@ class Sam:
         scores = outputs.iou_scores.cpu()
         return masks, scores
 
-    def raster_to_vector(self, masks, scores, img_transform, filename=None):
+    def raster_to_vector(self, masks, scores, img_transform=None, filename=None):
         """Converts a raster mask to a vector mask
         Args:
             masks: The raster mask
@@ -95,13 +96,19 @@ class Sam:
         masks_highest = torch.stack(masks_list, dim=0)
         masks_combined = torch.amax(masks_highest, dim=0, keepdim=False).numpy().astype(np.uint8)
         assert masks_combined.sum() > 0 # check if there are any masks  # TODO: the second and third mask may not be empty even with no prompts, why?
+        
+        if img_transform is not None:
+            shape_generator = features.shapes(
+                masks_combined,
+                mask=masks_combined>0,
+                transform=img_transform,
+            )
+        else:
+            shape_generator = features.shapes(
+                masks_combined,
+                mask=masks_combined>0,
+            )
 
-        shape_generator = get_shapes(
-            masks_combined,
-            mask=masks_combined>0,
-            connectivity=4,  # change from default:4 to 8
-            transform=img_transform,
-        )
         geojson = [
             {"properties": {"uid": value}, "geometry": polygon}
             for polygon, value in shape_generator
