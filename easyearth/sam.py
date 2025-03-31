@@ -81,8 +81,8 @@ class Sam:
         masks = masks[0]
 
         # Get the index of the mask with the highest iou score
-        highes_score_idx = torch.argmax(scores, dim=2).squeeze()
-        assert len(highes_score_idx) == masks.shape[0]
+        highes_score_idx = torch.argmax(scores, dim=2)
+        assert highes_score_idx.shape[-1] == masks.shape[0]
 
         # Change boolean to index id of the first dimension of a tensor that represents the id of each object mask
         depth_ids = torch.arange(masks.size(0)).view(-1, 1, 1, 1).expand_as(masks)
