@@ -23,7 +23,7 @@ setup(
     keywords=["Swagger", "Connexion"],
     install_requires=REQUIRES,
     packages=find_packages(),
-    package_data={'': ['openapi/swagger.yaml']},
+    package_data={'easyearth': ['openapi/swagger.yaml']},
     include_package_data=True,
     entry_points={
         'console_scripts': ['swagger_server=swagger_server.__main__:main']},

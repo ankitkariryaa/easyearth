@@ -80,6 +80,6 @@ paths:
                           type: object
                           description: Prediction-specific data
 servers:
-  - url: http://0.0.0.0:5000
+  - url: /v1/easyearth/
     description: Local server
 

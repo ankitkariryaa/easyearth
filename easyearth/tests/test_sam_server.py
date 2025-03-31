@@ -1,19 +1,9 @@
 import unittest
-import json
 import requests
-import numpy as np
-from pathlib import Path
 
 class TestSAMServer(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.base_url = "http://localhost:5000"
-        self.test_image_path = "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png"  # Replace with actual test image path
-        self.input_points = [[[850, 1100]], [[2250, 1000]]]
-        self.input_boxes = [[[620, 900, 1000, 1255]], [[2000, 800, 2500, 1200]]]
-        self.input_labels = input_labels = [[1]]
-
-    def setUp(self):
         self.base_url = "http://localhost:5000"
         self.test_image_path = "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png"  # Replace with actual test image path
         self.input_points = [[[850, 1100]], [[2250, 1000]]]
@@ -34,7 +24,7 @@ class TestSAMServer(unittest.TestCase):
             "prompts": [
                 {
                     "type": "Point",
-                    "data": {"points": [[850, 1100]], "labels": [1]}
+                    "data": {"points": self.input_points[0], "labels": self.input_labels[0]}
                 },
             ]
         }
@@ -56,7 +46,7 @@ class TestSAMServer(unittest.TestCase):
             "prompts": [
                 {
                     "type": "Box",
-                    "data": {"boxes": [[650, 900, 1000, 1250]]}
+                    "data": {"boxes": self.input_boxes[0]}
                 }
             ]
         }
@@ -76,11 +66,11 @@ class TestSAMServer(unittest.TestCase):
             "prompts": [
                 {
                     "type": "Point",
-                    "data": {"points": [[850, 1100]], "labels": [0]}
+                    "data": {"points": self.input_points[0], "labels": self.input_labels[0]}
                 },
                 {
                     "type": "Box",
-                    "data": {"boxes": [[650, 900, 1000, 1250]]}
+                    "data": {"boxes": self.input_boxes[0]}
                 }
             ]
         }
@@ -100,7 +90,7 @@ class TestSAMServer(unittest.TestCase):
             "prompts": [
                 {
                     "type": "Point",
-                    "data": {"points": [[850, 1100]], "labels": [0]}
+                    "data": {"points": self.input_points[0], "labels": self.input_labels[0]}
                 }
             ]
         }
