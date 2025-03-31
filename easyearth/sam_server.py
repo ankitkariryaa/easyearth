@@ -3,7 +3,7 @@ from flask_cors import CORS
 import numpy as np
 import rasterio
 import pyproj  # Add this for CRS transformation
-from sam import Sam
+from easyearth.models.sam import Sam
 from PIL import Image
 import requests
 
@@ -49,8 +49,6 @@ def reproject_prompts(prompts, transform, image_shape):
         transform (affine.Affine): Rasterio transform object
         image_shape (tuple): Image dimensions (height, width)
     """
-
-    import ipdb; ipdb.set_trace()
     
     height, width = image_shape[:2]
     
@@ -223,4 +221,4 @@ def health_check():
         }), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(port=5000)

@@ -1,13 +1,10 @@
 """Test functions in easyearth.sam module."""
 
-import sys
-
-import pytest
 from PIL import Image
 import requests
 import torch
 
-from easyearth.sam import Sam
+from easyearth.models.sam import Sam
 
 class TestSam:
     """Test the Sam class"""

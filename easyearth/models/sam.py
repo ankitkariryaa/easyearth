@@ -138,16 +138,16 @@ if __name__ == "__main__":
 
     # No prompts
     masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings)
-    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/home/yan/PycharmProjects/easyearth/tmp/masks_no.geojson")
+    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_no.geojson")
     # Single points
     masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_points=input_points)
-    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/home/yan/PycharmProjects/easyearth/tmp/masks_point.geojson")
+    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_point.geojson")
     # Single bounding box
     masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_boxes=input_boxes)
-    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/home/yan/PycharmProjects/easyearth/tmp/masks_bbox.geojson")
+    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_bbox.geojson")
     # Bounding box and point with label 0 to mask out parts of the image
     masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_points=input_points, input_boxes=input_boxes, input_labels=input_labels)
-    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/home/yan/PycharmProjects/easyearth/tmp/masks_point_bbox.geojson")
+    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_point_bbox.geojson")
     # Multiple prompts and multiple masks
     masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_boxes=multiple_boxes)
-    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/home/yan/PycharmProjects/easyearth/tmp/masks_multibbox.geojson")
+    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_multibbox.geojson")
