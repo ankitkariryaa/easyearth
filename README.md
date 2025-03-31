@@ -35,11 +35,18 @@ pip3 install -r test-requirements.txt
 ## Swagger definition
 
 ```http
-http://localhost:3781/v1/easyearth/swagger.json
+http://localhost:3781/v1/easyearth/swagger.json  # TODO: not working yet...
 ```
 
 ## Health Check
 
+Check if the server is running, the response should be `Server is alive`
+```
+curl -X GET http://127.0.0.1:3781/v1/easyearth/ping'
+
+```
+
+Check if the prediction endpoint is working, 
 ```
 curl -X POST http://127.0.0.1:3781/v1/easyearth/predict -H "Content-Type: application/json" -d '{
   "image_path": "/path/to/image.jpg",
