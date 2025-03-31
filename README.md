@@ -59,6 +59,23 @@ curl -X POST http://127.0.0.1:3781/v1/easyearth/predict -H "Content-Type: applic
 
 ```
 
+Test predictions with SAM model
+```
+curl -X POST http://127.0.0.1:3781/v1/easyearth/sam-predict -H "Content-Type: application/json" -d '{
+  "image_path": "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png",
+  "prompts": [
+    {
+      "type": "Point",
+      "data": {
+        "points": [[850, 1100]],
+        "labels": [1]
+      }
+    }
+  ]
+}'
+
+```
+
 ## Launch tests
 
 ```bash

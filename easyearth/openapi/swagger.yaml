@@ -79,6 +79,61 @@ paths:
                         data:
                           type: object
                           description: Prediction-specific data
+  /sam-predict:
+    post:
+      summary: Analyze an image with prompts using the SAM model
+      operationId: easyearth.controllers.sam_controller.predict
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                image_path:
+                  type: string
+                  description: Path to the image
+                embedding_path:
+                  type: string
+                  description: Path to the embedding (optional)
+                  nullable: true
+                prompts:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum: [ "Point", "Box", "Text", "None" ]
+                      data:
+                        type: object
+                        description: Prompt-specific data
+                        nullable: true
+                        example: { }
+              required:
+                - image_path
+                - prompts
+      responses:
+        "200":
+          description: Analysis response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model_description:
+                    type: string
+                  predictions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum: [ "Class", "Points", "Polygons" ]
+                        data:
+                          type: object
+                          description: Prediction-specific data
 servers:
   - url: /v1/easyearth/
     description: Local server
