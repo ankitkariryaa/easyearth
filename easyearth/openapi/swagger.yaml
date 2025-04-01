@@ -2,9 +2,9 @@ openapi: 3.0.3
 info:
   description: Basic image analysis app with Flask , Connexion and OpenApi 3
   version: 0.0.1
-  title: Easy Earth example
+  title: EasyEarth API
   contact:
-    email: ankit.ky@gmail.com
+    email: ankit.ky@gmail.com, chengyan2017@gmail.com
   license:
     name: Apache 2.0
     url: http://www.apache.org/licenses/LICENSE-2.0.html
