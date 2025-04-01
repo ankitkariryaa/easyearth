@@ -1,0 +1,13 @@
+version: '3.8'   # More recent features
+
+services:
+  easyearth-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3781:3781"
+    volumes:
+      - .:/usr/src/app
+    # tty: true
+    # stdin_open: true

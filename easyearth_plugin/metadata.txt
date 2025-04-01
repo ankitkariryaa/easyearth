@@ -1,0 +1,22 @@
+[general]
+name=EasyEarth
+description=Apply segmentation models from hugging face for a given prompts created on QGIS canvas
+version=1.0
+qgisMinimumVersion=3.0
+author=Yan Cheng
+email=chengyan2017@gmail.com
+
+about=This plugin integrates the Segment Anything Model with QGIS for image segmentation.
+
+tracker=https://github.com/yourusername/sam_qgis_plugin/issues
+repository=https://github.com/yourusername/sam_qgis_plugin
+
+hasProcessingProvider=no
+tags=segmentation,machine learning,SAM
+
+homepage=https://github.com/yourusername/sam_qgis_plugin
+category=Plugins
+icon=icons/icon.png
+
+experimental=True
+deprecated=False
