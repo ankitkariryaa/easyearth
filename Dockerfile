@@ -1,29 +1,23 @@
-FROM python:3.10-slim
+FROM python:3.10
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y libexpat1 && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /usr/src/app
 WORKDIR /usr/src/app
 
-# Upgrade pip
-RUN pip install --upgrade pip
-
-# Copy necessary files to the container
 COPY requirements.txt /usr/src/app/
-# COPY download_models.py /usr/src/app/
 
-# Create a virtual environment in the container
-RUN python3 -m venv .venv
-
-# Activate the virtual environment
-ENV PATH="/usr/src/app/.venv/bin:$PATH"
-
-# Install Python dependencies from the requirements file
-RUN pip3 install --no-cache-dir -r requirements.txt --upgrade && \
-    # Get the models from Hugging Face to bake into the container
-    #     python3 download_models.py
+# upgrade pip
+RUN pip install --upgrade pip setuptools wheel
+RUN pip install --no-cache-dir -r requirements.txt --upgrade
 
 COPY . /usr/src/app
 
 EXPOSE 3781
 
-ENTRYPOINT [ "gunicorn" ]
-CMD ["-w", "2", "-b", "0.0.0.0:3781", "easyearth.app:app"]
+CMD ["python", "-m", "easyearth.app", "--host", "0.0.0.0", "--port", "3781"]
+
+# TODO: fix gunicorn, so far it's not working
+# ENTRYPOINT ["gunicorn"]
+# CMD ["-w", "2", "-b", "0.0.0.0:3781", "easyearth.wsgi:app"]
