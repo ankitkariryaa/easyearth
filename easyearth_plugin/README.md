@@ -1,7 +1,7 @@
 # Easy Earth project with Flask, Connexion and OpenApi 3
 
 
-EasyEarth Python project using Flask and Connexion
+EasyEarth - QGIS plugin powered by huggingface, Flask and Connexion
 
 ```http
 https://github.com/zalando/connexion
@@ -11,16 +11,28 @@ https://github.com/zalando/connexion
 
 * Docker Compose 1.21.2+ (see https://docs.docker.com/compose/install/)
 * Python 3.6 +
+* QGIS
 
 ## Installing docker
 
 For linux user, do not use snap to install docker and docker-compose  # TODO: need to see if it is an issue for windows user...
-```
+```bash
 sudo apt update
 sudo apt install docker-compose
 ```
 
+## Install easyearth plugin on qgis
+1. Open QGIS, click Settings -> User profiles -> Open Active Profile Folder -> python -> plugins
+2. Copy easyearth_plugin folder to "plugins"
+3. Reopen QGIS, click Plugins -> Manage and Install Plugins -> Installed -> click the check box before EasyEarth
 
+## Run EasyEarth
+1. Click Start Docker
+2. Click Browse image and select an image to play with 
+3. Click Start Drawing.
+
+
+---------- Documentation during development --------------
 ## Run with Docker Compose in the project root directory
 
 ```bash
@@ -91,11 +103,3 @@ curl -X POST http://127.0.0.1:3781/v1/easyearth/sam-predict -H "Content-Type: ap
 source venv/bin/activate
 tox
 ```
-
-## How does it work?
-on QGIS GUI
-1. select what model to use
-2. load embeddings or leave it empty
-3. create the prompt 
-All these info would be sent as a configuration file to the backend for prediction, then the backend would return the mask to the frontend for visualization.
-The frontend would then display the mask on the map, the user can then save the mask as a raster or vector file
