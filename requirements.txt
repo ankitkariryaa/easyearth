@@ -19,3 +19,5 @@ huggingface_hub==0.29.3
 
 pytest
 ipdb
+
+PyYAML>=5.1

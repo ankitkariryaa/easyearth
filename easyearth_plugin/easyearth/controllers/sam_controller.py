@@ -6,6 +6,7 @@ import pyproj  # Add this for CRS transformation
 from easyearth.models.sam import Sam
 from PIL import Image
 import requests
+import os
 
 def reorgnize_prompts(prompts):
     """
@@ -137,14 +138,15 @@ def predict():
         # Generate masks
         sam = Sam()
 
-        # Handle image embeddings
-        embedding_path = data.get('embedding_path')
-        if embedding_path:
+        # Handle image embeddings, if not provided, generate a new one, if save_embeddings is False, don't save the embedding
+        save_embeddings = data.get('save_embeddings', False)
+        embedding_path = data.get('embedding_path', None)
+        if embedding_path and os.path.exists(embedding_path):
             image_embeddings = np.load(embedding_path)
         else:
-            embedding_path = "/home/yan/PycharmProjects/easyearth/tmp/image_embeddings.npy"
             image_embeddings = sam.get_image_embeddings(sam.model, sam.processor, image_array)
-            np.save(embedding_path, image_embeddings.cpu().numpy())
+            if save_embeddings and embedding_path:
+                np.save(embedding_path, image_embeddings.cpu().numpy())
 
         # Process prompts
         prompts = data.get('prompts', [])

@@ -9,13 +9,17 @@ https://github.com/zalando/connexion
 
 ## Requirements
 
-* Docker Compose 1.21.2+ (see https://docs.docker.com/compose/install/), do not use snap to install docker, which will introduce issue reading file in root folder when building docker in qgis
+* Docker Compose 1.21.2+ (see https://docs.docker.com/compose/install/)
+* Python 3.6 +
+
+## Installing docker
+
+For linux user, do not use snap to install docker and docker-compose  # TODO: need to see if it is an issue for windows user...
 ```
 sudo apt update
 sudo apt install docker-compose
 ```
 
-* Python 3.6 +
 
 ## Run with Docker Compose in the project root directory
 
