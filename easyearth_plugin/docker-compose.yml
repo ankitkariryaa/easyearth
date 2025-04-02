@@ -9,5 +9,9 @@ services:
       - "3781:3781"
     volumes:
       - .:/usr/src/app
+      - /home/yan/Downloads:/usr/src/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+
     # tty: true
     # stdin_open: true

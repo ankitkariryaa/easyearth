@@ -353,16 +353,27 @@ class EasyEarthPlugin:
 
     def browse_image(self):
         """Open file dialog for image selection and load it to canvas"""
-        file_path, _ = QFileDialog.getOpenFileName(
-            self.dock_widget,
-            "Select Image File",
-            "",
-            "Image Files (*.png *.jpg *.jpeg *.tif *.tiff);;All Files (*.*)"
-        )
-        if file_path:
-            self.image_path.setText(file_path)
-            # Load image to canvas immediately
-            self.load_image()
+        try:
+            # Set initial directory to plugin's data folder
+            initial_dir = os.path.join(self.plugin_dir, 'data')
+            if not os.path.exists(initial_dir):
+                initial_dir = ""
+
+            file_path, _ = QFileDialog.getOpenFileName(
+                self.dock_widget,
+                "Select Image File",
+                initial_dir,
+                "Image Files (*.png *.jpg *.jpeg *.tif *.tiff);;All Files (*.*)"
+            )
+            
+            if file_path:
+                self.image_path.setText(file_path)
+                # Load image to canvas immediately
+                self.load_image()
+            
+        except Exception as e:
+            logger.error(f"Error browsing image: {str(e)}")
+            QMessageBox.critical(None, "Error", f"Failed to browse image: {str(e)}")
 
     def load_image(self):
         """Load the selected image and create predictions layer"""
@@ -926,15 +937,52 @@ class EasyEarthPlugin:
 
             draw_type = self.draw_type_combo.currentText()
             
+            # Get the raster layer
+            raster_layer = None
+            if self.source_combo.currentText() == "File":
+                # Find the raster layer by name "Selected Image"
+                for layer in QgsProject.instance().mapLayers().values():
+                    if isinstance(layer, QgsRasterLayer) and layer.name() == "Selected Image":
+                        raster_layer = layer
+                        break
+            else:
+                raster_layer = self.layer_combo.currentData()
+
+            if not raster_layer:
+                raise ValueError("No raster layer found")
+
+            # Get raster dimensions and extent
+            extent = raster_layer.extent()
+            width = raster_layer.width()
+            height = raster_layer.height()
+
             if draw_type == "Point":
-                # Handle point drawing
+                # Reset rubber band for each new point to prevent line creation
+                self.rubber_band.reset(QgsWkbTypes.PointGeometry)
                 self.rubber_band.addPoint(point)
+                
+                # Calculate pixel coordinates
+                px = int((point.x() - extent.xMinimum()) * width / extent.width())
+                py = int((extent.yMaximum() - point.y()) * height / extent.height())
+                
+                # Ensure coordinates are within image bounds
+                px = max(0, min(px, width - 1))
+                py = max(0, min(py, height - 1))
+                
+                # Show coordinates in message bar
+                self.iface.messageBar().pushMessage(
+                    "Point Info", 
+                    f"Map coordinates: ({point.x():.2f}, {point.y():.2f})\n"
+                    f"Pixel coordinates sent to server: ({px}, {py})",
+                    level=Qgis.Info,
+                    duration=3
+                )
                 
                 # Prepare point prompt
                 prompt = [{
                     'type': 'Point',
                     'data': {
-                        "points": [[point.x(), point.y()]],
+                        "points": [[px, py]],
                         "labels": [1]
                     }
                 }]
@@ -948,13 +996,37 @@ class EasyEarthPlugin:
                     self.start_point = point
                     self.temp_rubber_band.reset(QgsWkbTypes.PolygonGeometry)
                     self.temp_rubber_band.addPoint(point)
+                    
+                    # Show start point coordinates
+                    self.iface.messageBar().pushMessage(
+                        "Box Start Point", 
+                        f"Start point - Map: ({point.x():.2f}, {point.y():.2f})",
+                        level=Qgis.Info,
+                        duration=3
+                    )
                 else:
-                    # Finish drawing box
-                    # Create box coordinates
-                    xmin = min(self.start_point.x(), point.x())
-                    ymin = min(self.start_point.y(), point.y())
-                    xmax = max(self.start_point.x(), point.x())
-                    ymax = max(self.start_point.y(), point.y())
+                    # Calculate pixel coordinates for start point
+                    start_px = int((self.start_point.x() - extent.xMinimum()) * width / extent.width())
+                    start_py = int((extent.yMaximum() - self.start_point.y()) * height / extent.height())
+                    
+                    # Calculate pixel coordinates for end point
+                    end_px = int((point.x() - extent.xMinimum()) * width / extent.width())
+                    end_py = int((extent.yMaximum() - point.y()) * height / extent.height())
+                    
+                    # Ensure coordinates are within image bounds
+                    start_px = max(0, min(start_px, width - 1))
+                    start_py = max(0, min(start_py, height - 1))
+                    end_px = max(0, min(end_px, width - 1))
+                    end_py = max(0, min(end_py, height - 1))
+                    
+                    # Show box coordinates
+                    self.iface.messageBar().pushMessage(
+                        "Box Info", 
+                        f"Box coordinates sent to server: [{min(start_px, end_px)}, {min(start_py, end_py)}, "
+                        f"{max(start_px, end_px)}, {max(start_py, end_py)}]",
+                        level=Qgis.Info,
+                        duration=3
+                    )
                     
                     # Create box geometry for display
                     box_geom = self.create_box_geometry(self.start_point, point)
@@ -964,7 +1036,12 @@ class EasyEarthPlugin:
                     prompt = [{
                         'type': 'Box',
                         'data': {
-                            "boxes": [[xmin, ymin, xmax, ymax]]
+                            "boxes": [[
+                                min(start_px, end_px),
+                                min(start_py, end_py),
+                                max(start_px, end_px),
+                                max(start_py, end_py)
+                            ]]
                         }
                     }]
                     
@@ -1069,15 +1146,6 @@ class EasyEarthPlugin:
             if not isinstance(prompts, list) or not prompts:
                 raise ValueError("Invalid prompts format")
             
-            # Convert point coordinates to integers if they're floats
-            for prompt in prompts:
-                if prompt['type'] == 'Point':
-                    points = prompt['data']['points']
-                    prompt['data']['points'] = [[int(x), int(y)] for x, y in points]
-                elif prompt['type'] == 'Box':
-                    boxes = prompt['data']['boxes']
-                    prompt['data']['boxes'] = [[int(x1), int(y1), int(x2), int(y2)] for x1, y1, x2, y2 in boxes]
-
             # Get embedding settings
             embedding_path = None
             save_embeddings = False
@@ -1108,25 +1176,42 @@ class EasyEarthPlugin:
                 "save_embeddings": save_embeddings
             }
 
+            # Show payload in message bar
+            formatted_payload = (
+                f"Sending to server:\n"
+                f"- Host image path: {image_path}\n"
+                f"- Prompt type: {prompts[0]['type']}\n"
+            )
+            
+            if prompts[0]['type'] == 'Point':
+                points = prompts[0]['data']['points']
+                formatted_payload += f"- Points: {points}\n"
+                formatted_payload += f"- Labels: {prompts[0]['data']['labels']}"
+            elif prompts[0]['type'] == 'Box':
+                boxes = prompts[0]['data']['boxes']
+                formatted_payload += f"- Box coordinates: {boxes}"
+
+            self.iface.messageBar().pushMessage(
+                "Server Request", 
+                formatted_payload,
+                level=Qgis.Info,
+                duration=5
+            )
+
             # Log detailed request information
             logger.debug("=== Request Details ===")
             logger.debug(f"Server URL: {self.server_url}/sam-predict")
-            logger.debug(f"Image path: {image_path}")
-            logger.debug(f"Image exists: {os.path.exists(image_path)}")
-            logger.debug(f"Image size: {os.path.getsize(image_path)} bytes")
-            logger.debug(f"Embedding path: {embedding_path}")
-            logger.debug(f"Save embeddings: {save_embeddings}")
-            logger.debug(f"Prompts: {json.dumps(prompts, indent=2)}")
+            logger.debug(f"Request payload: {json.dumps(payload, indent=2)}")
 
             # Send request to SAM server
             try:
                 response = requests.post(
                     f"{self.server_url}/sam-predict",
                     json=payload,
-                    timeout=30
+                    timeout=60000  # TODO: it is very slow at the moment
                 )
                 
-                # Log response details
+                # Log the response details
                 logger.debug("=== Response Details ===")
                 logger.debug(f"Status code: {response.status_code}")
                 logger.debug(f"Response headers: {dict(response.headers)}")
@@ -1135,13 +1220,12 @@ class EasyEarthPlugin:
                     response_json = response.json()
                     logger.debug(f"Response body: {json.dumps(response_json, indent=2)}")
                 except Exception as e:
-                    logger.error(f"Failed to parse response as JSON: {str(e)}")
                     logger.debug(f"Raw response: {response.text}")
 
-                if response.status_code == 500:
-                    error_msg = "Server error occurred. Check the server logs for details."
-                    if response_json and 'detail' in response_json:
-                        error_msg = f"Server error: {response_json['detail']}"
+                if response.status_code == 400:
+                    error_msg = "Bad request. Server rejected the input format."
+                    if response_json and 'message' in response_json:
+                        error_msg = f"Server error: {response_json['message']}"
                     raise Exception(error_msg)
                 
                 response.raise_for_status()  # Raise exception for other error status codes
@@ -1167,12 +1251,10 @@ class EasyEarthPlugin:
                         duration=2
                     )
 
-            except requests.exceptions.ConnectionError:
-                raise ConnectionError("Failed to connect to SAM server. Is it running?")
-            except requests.exceptions.Timeout:
-                raise TimeoutError("Request to SAM server timed out")
-            except requests.exceptions.RequestException as e:
-                raise Exception(f"Request failed: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error getting prediction: {str(e)}")
+                logger.exception("Full traceback:")
+                QMessageBox.critical(None, "Error", f"Failed to get prediction: {str(e)}")
 
         except Exception as e:
             logger.error(f"Error getting prediction: {str(e)}")
@@ -1196,6 +1278,7 @@ class EasyEarthPlugin:
             for feature in features:
                 qgis_feature = QgsFeature()
                 
+                # TODO: fix this part
                 # Convert geometry
                 geom_json = feature.get('geometry')
                 if geom_json:

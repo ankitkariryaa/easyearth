@@ -7,6 +7,44 @@ from easyearth.models.sam import Sam
 from PIL import Image
 import requests
 import os
+import logging
+import json
+from datetime import datetime
+import sys
+
+# Create logs directory in the plugin directory
+PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+LOG_DIR = os.path.join(PLUGIN_DIR, 'logs')
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# Set up logging configuration
+log_file = os.path.join(LOG_DIR, f'sam_server_{datetime.now().strftime("%Y%m%d")}.log')
+
+# Configure root logger
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file, mode='a'),  # 'a' for append mode
+        logging.StreamHandler(sys.stdout)  # This will print to Docker logs
+    ]
+)
+
+# Get logger for this module
+logger = logging.getLogger(__name__)
+
+# Log some initial information
+logger.info(f"=== Server Starting ===")
+logger.info(f"Plugin directory: {PLUGIN_DIR}")
+logger.info(f"Log directory: {LOG_DIR}")
+logger.info(f"Log file: {log_file}")
+logger.info(f"Current working directory: {os.getcwd()}")
+logger.info(f"Python path: {sys.path}")
+
+# Test logging
+logger.debug("Debug message test")
+logger.info("Info message test")
+logger.warning("Warning message test")
 
 def reorgnize_prompts(prompts):
     """
@@ -98,110 +136,182 @@ def reproject_prompts(prompts, transform, image_shape):
     return transformed
 
 def predict():
+    """Handle prediction request"""
     try:
         # Get the image data from the request
         data = request.get_json()
+        logger.debug("=== Received Request ===")
+        logger.debug(json.dumps(data, indent=2))
 
-        # data = json_data
+        # Validate and convert image path
         image_path = data.get('image_path')
-        target_crs = data.get('target_crs') if data.get('target_crs') else None  # The CRS for the output masks
-
         if not image_path:
             return jsonify({
                 'status': 'error',
                 'message': 'image_path is required'
             }), 400
 
-        if image_path.endswith('.tif'):
-            # Open the image using rasterio to get geospatial information
-            with rasterio.open(image_path) as src:
-                # Get image metadata
-                transform = src.transform
-                source_crs = src.crs.to_string()
+        # Convert host paths to container paths
 
-                # Read image data
-                image_array = src.read()
-                # Transpose from (bands, height, width) to (height, width, bands)
-                image_array = np.transpose(image_array, (1, 2, 0))
-                # get transform of the target CRS using pyproj
-            if target_crs is not None and target_crs != source_crs:
-                target_crs = pyproj.CRS.from_string(target_crs)
-                transform = pyproj.Transformer.from_crs(source_crs, target_crs, always_xy=True).transform(transform)
-        elif image_path.startswith('http'):
-            image_array = Image.open(requests.get(image_path, stream=True).raw).convert("RGB")
-            image_array = np.array(image_array)
-            transform = None
-        else:
-            image_array = np.array(Image.open(image_path))
-            transform = None
+        # when it contains /home/yan/Downloads
+        if image_path.startswith('/home/yan/Downloads'):
+            container_path = image_path.replace('/home/yan/Downloads', '/usr/src/app/data')
+            logger.debug(f"Converting path from {image_path} to {container_path}")
+            image_path = container_path
 
-        # Generate masks
-        sam = Sam()
+        logger.debug(f"Checking image path: {image_path}")
+        logger.debug(f"File exists: {os.path.exists(image_path)}")
+        logger.debug(f"Current working directory: {os.getcwd()}")
+        
 
-        # Handle image embeddings, if not provided, generate a new one, if save_embeddings is False, don't save the embedding
-        save_embeddings = data.get('save_embeddings', False)
-        embedding_path = data.get('embedding_path', None)
-        if embedding_path and os.path.exists(embedding_path):
-            image_embeddings = np.load(embedding_path)
-        else:
-            image_embeddings = sam.get_image_embeddings(sam.model, sam.processor, image_array)
-            if save_embeddings and embedding_path:
-                np.save(embedding_path, image_embeddings.cpu().numpy())
-
-        # Process prompts
-        prompts = data.get('prompts', [])
-        if not prompts:
+        if not os.path.exists(image_path):
             return jsonify({
                 'status': 'error',
-                'message': 'prompts are required'
-            }), 400
+                'message': f'Image file not found at path: {image_path}. Container path: {container_path if "container_path" in locals() else "N/A"}'
+            }), 404
 
-        # Reorgnize the prompts
-        prompts = reorgnize_prompts(prompts)
+        # Load image with detailed error handling
+        try:
+            if image_path.startswith(('http://', 'https://')):
+                # Handle URL images
+                logger.debug(f"Loading image from URL: {image_path}")
+                response = requests.get(image_path, stream=True)
+                response.raise_for_status()  # Raise error for bad status codes
+                image = Image.open(response.raw).convert('RGB')
+                image_array = np.array(image)
+                transform = None
+                source_crs = None
+                logger.debug(f"Loaded URL image with shape: {image_array.shape}")
+            elif image_path.endswith('.tif'):
+                # Handle local GeoTIFF files
+                logger.debug(f"Loading GeoTIFF from: {image_path}")
+                if not os.path.exists(image_path):
+                    return jsonify({
+                        'status': 'error',
+                        'message': f'GeoTIFF file not found: {image_path}'
+                    }), 404
+                with rasterio.open(image_path) as src:
+                    transform = src.transform
+                    source_crs = src.crs.to_string()
+                    image_array = src.read()
+                    image_array = np.transpose(image_array, (1, 2, 0))
+                    logger.debug(f"Loaded GeoTIFF with shape: {image_array.shape}")
+            else:
+                # Handle local regular images
+                logger.debug(f"Loading local image from: {image_path}")
+                if not os.path.exists(image_path):
+                    return jsonify({
+                        'status': 'error',
+                        'message': f'Image file not found: {image_path}'
+                    }), 404
+                image = Image.open(image_path).convert('RGB')
+                image_array = np.array(image)
+                transform = None
+                source_crs = None
+                logger.debug(f"Loaded local image with shape: {image_array.shape}")
 
-        # Transform all prompts
-        if image_path.endswith('.tif'):
-            transformed_prompts = reproject_prompts(
-                prompts,
-                transform,
-                image_array.shape
+            # Ensure image is in the correct format
+            if len(image_array.shape) == 2:
+                # Convert grayscale to RGB
+                image_array = np.stack([image_array] * 3, axis=-1)
+            elif image_array.shape[2] > 3:
+                # Take only first 3 channels if more than 3
+                image_array = image_array[:, :, :3]
+            
+            logger.debug(f"Final image shape: {image_array.shape}, dtype: {image_array.dtype}")
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error downloading image from URL: {str(e)}")
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to download image: {str(e)}'
+            }), 500
+        except Exception as e:
+            logger.error("Error loading image:")
+            logger.exception(e)
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to load image: {str(e)}'
+            }), 500
+
+        # Process prompts with detailed logging
+        try:
+            prompts = data.get('prompts', [])
+            logger.debug("Processing prompts:")
+            logger.debug(json.dumps(prompts, indent=2))
+
+            # Transform prompts
+            transformed_prompts = reorgnize_prompts(prompts)
+            logger.debug("Transformed prompts:")
+            logger.debug(json.dumps(transformed_prompts, indent=2))
+
+            # Initialize SAM
+            logger.debug("Initializing SAM model")
+            sam = Sam()
+
+            # Get embeddings
+            logger.debug("Getting image embeddings")
+            embedding_path = data.get('embedding_path')
+            save_embeddings = data.get('save_embeddings', False)
+
+            if embedding_path and os.path.exists(embedding_path):
+                logger.debug(f"Loading existing embedding from: {embedding_path}")
+                image_embeddings = np.load(embedding_path)
+            else:
+                logger.debug("Generating new embeddings")
+                image_embeddings = sam.get_image_embeddings(sam.model, sam.processor, image_array)
+                if save_embeddings and embedding_path:
+                    logger.debug(f"Saving embeddings to: {embedding_path}")
+                    np.save(embedding_path, image_embeddings.cpu().numpy())
+
+            # Get masks
+            logger.debug("Getting masks from SAM")
+            masks, scores = sam.get_masks(
+                sam.model,
+                image_array,
+                sam.processor,
+                image_embeddings,
+                input_points=transformed_prompts['points'] if transformed_prompts['points'] else None,
+                input_labels=transformed_prompts['labels'] if transformed_prompts['labels'] else None,
+                input_boxes=transformed_prompts['boxes'] if transformed_prompts['boxes'] else None,
             )
-        else:
-            transformed_prompts = prompts
 
-        # Use transformed prompts with SAM
-        masks, scores = sam.get_masks(
-            sam.model,
-            image_array,
-            sam.processor,
-            image_embeddings,
-            input_points=transformed_prompts['points'] if transformed_prompts['points'] else None,
-            input_labels=transformed_prompts['labels'] if transformed_prompts['labels'] else None,
-            input_boxes=transformed_prompts['boxes'] if transformed_prompts['boxes'] else None,
-        )
+            if masks is None:
+                logger.error("No masks generated")
+                return jsonify({
+                    'status': 'error',
+                    'message': 'No valid masks generated'
+                }), 400
 
-        # Convert masks to GeoJSON with proper coordinate system
-        if masks is not None:
+            logger.debug(f"Generated {len(masks)} masks")
+
+            # Convert to GeoJSON
+            logger.debug("Converting masks to GeoJSON")
             geojson = sam.raster_to_vector(
                 masks,
                 scores,
                 transform,
-                filename="/home/yan/PycharmProjects/easyearth/tmp/masks.geojson"
+                filename="/tmp/masks.geojson"
             )
 
             return jsonify({
                 'status': 'success',
                 'features': geojson,
-                'crs': target_crs
+                'crs': source_crs
             }), 200
-        else:
+
+        except Exception as e:
+            logger.error("Error in prediction:")
+            logger.exception(e)
             return jsonify({
                 'status': 'error',
-                'message': 'No valid masks generated'
-            }), 400
+                'message': f'Prediction error: {str(e)}'
+            }), 500
 
     except Exception as e:
+        logger.error("Unexpected error in predict():")
+        logger.exception(e)
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': f'Server error: {str(e)}'
         }), 500
