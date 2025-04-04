@@ -2,7 +2,8 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import numpy as np
 import rasterio
-import pyproj  # Add this for CRS transformation
+import pyproj
+import torch  # Add this for CRS transformation
 from easyearth.models.sam import Sam
 from PIL import Image
 import requests
@@ -136,12 +137,10 @@ def reproject_prompts(prompts, transform, image_shape):
     return transformed
 
 def predict():
-    """Handle prediction request"""
+    """Handle prediction request with improved embedding handling"""
     try:
         # Get the image data from the request
         data = request.get_json()
-        logger.debug("=== Received Request ===")
-        logger.debug(json.dumps(data, indent=2))
 
         # Validate and convert image path
         image_path = data.get('image_path')
@@ -150,75 +149,42 @@ def predict():
                 'status': 'error',
                 'message': 'image_path is required'
             }), 400
-
-        # Convert host paths to container paths
-
-        # when it contains /home/yan/Downloads
-        if image_path.startswith('/home/yan/Downloads'):
-            container_path = image_path.replace('/home/yan/Downloads', '/usr/src/app/data')
-            logger.debug(f"Converting path from {image_path} to {container_path}")
-            image_path = container_path
-
-        logger.debug(f"Checking image path: {image_path}")
-        logger.debug(f"File exists: {os.path.exists(image_path)}")
-        logger.debug(f"Current working directory: {os.getcwd()}")
-        
-
         if not os.path.exists(image_path):
             return jsonify({
                 'status': 'error',
-                'message': f'Image file not found at path: {image_path}. Container path: {container_path if "container_path" in locals() else "N/A"}'
+                'message': f'Image file not found at path: {image_path}.'
             }), 404
 
         # Load image with detailed error handling
         try:
             if image_path.startswith(('http://', 'https://')):
                 # Handle URL images
-                logger.debug(f"Loading image from URL: {image_path}")
                 response = requests.get(image_path, stream=True)
-                response.raise_for_status()  # Raise error for bad status codes
+                response.raise_for_status()
                 image = Image.open(response.raw).convert('RGB')
                 image_array = np.array(image)
                 transform = None
                 source_crs = None
-                logger.debug(f"Loaded URL image with shape: {image_array.shape}")
             elif image_path.endswith('.tif'):
                 # Handle local GeoTIFF files
-                logger.debug(f"Loading GeoTIFF from: {image_path}")
-                if not os.path.exists(image_path):
-                    return jsonify({
-                        'status': 'error',
-                        'message': f'GeoTIFF file not found: {image_path}'
-                    }), 404
                 with rasterio.open(image_path) as src:
                     transform = src.transform
                     source_crs = src.crs.to_string()
                     image_array = src.read()
                     image_array = np.transpose(image_array, (1, 2, 0))
-                    logger.debug(f"Loaded GeoTIFF with shape: {image_array.shape}")
             else:
                 # Handle local regular images
                 logger.debug(f"Loading local image from: {image_path}")
-                if not os.path.exists(image_path):
-                    return jsonify({
-                        'status': 'error',
-                        'message': f'Image file not found: {image_path}'
-                    }), 404
                 image = Image.open(image_path).convert('RGB')
                 image_array = np.array(image)
                 transform = None
                 source_crs = None
-                logger.debug(f"Loaded local image with shape: {image_array.shape}")
 
             # Ensure image is in the correct format
             if len(image_array.shape) == 2:
-                # Convert grayscale to RGB
                 image_array = np.stack([image_array] * 3, axis=-1)
             elif image_array.shape[2] > 3:
-                # Take only first 3 channels if more than 3
                 image_array = image_array[:, :, :3]
-            
-            logger.debug(f"Final image shape: {image_array.shape}, dtype: {image_array.dtype}")
 
         except requests.exceptions.RequestException as e:
             logger.error(f"Error downloading image from URL: {str(e)}")
@@ -227,45 +193,82 @@ def predict():
                 'message': f'Failed to download image: {str(e)}'
             }), 500
         except Exception as e:
-            logger.error("Error loading image:")
-            logger.exception(e)
+            logger.error("Error loading image:", exc_info=True)
             return jsonify({
                 'status': 'error',
                 'message': f'Failed to load image: {str(e)}'
             }), 500
 
-        # Process prompts with detailed logging
+        # Process prompts
         try:
             prompts = data.get('prompts', [])
-            logger.debug("Processing prompts:")
-            logger.debug(json.dumps(prompts, indent=2))
-
-            # Transform prompts
             transformed_prompts = reorgnize_prompts(prompts)
-            logger.debug("Transformed prompts:")
-            logger.debug(json.dumps(transformed_prompts, indent=2))
-
+            
             # Initialize SAM
             logger.debug("Initializing SAM model")
             sam = Sam()
 
-            # Get embeddings
-            logger.debug("Getting image embeddings")
+            # Handle embeddings
             embedding_path = data.get('embedding_path')
             save_embeddings = data.get('save_embeddings', False)
+            
+            image_embeddings = None
 
             if embedding_path and os.path.exists(embedding_path):
-                logger.debug(f"Loading existing embedding from: {embedding_path}")
-                image_embeddings = np.load(embedding_path)
+                try:
+                    logger.debug(f"Loading cached embedding from: {embedding_path}")
+                    embedding_data = torch.load(embedding_path)
+                    
+                    # Handle both old and new format embeddings
+                    if isinstance(embedding_data, dict):
+                        # New format with metadata
+                        if embedding_data.get('image_shape') == image_array.shape[:2]:
+                            image_embeddings = embedding_data['embeddings'].to(sam.device)
+                            used_cache = True
+                        else:
+                            logger.warning("Cached embedding shape mismatch, will generate new one")
+                    else:
+                        # Old format - direct embeddings
+                        image_embeddings = embedding_data.to(sam.device)
+                        used_cache = True
+                        
+                except Exception as e:
+                    image_embeddings = None
+
+            # Generate new embeddings if needed
             else:
-                logger.debug("Generating new embeddings")
+                logger.info("Generating new embeddings")
                 image_embeddings = sam.get_image_embeddings(sam.model, sam.processor, image_array)
+
+                # generate an index file to relate the image to the embedding
+                DATA_DIR = os.path.dirname(image_path)
+                os.makedirs(os.path.join(DATA_DIR, 'embeddings'), exist_ok=True)
+                index_path = os.path.join(DATA_DIR, 'embeddings', 'index.json')
+                if os.path.exists(index_path):
+                    with open(index_path, 'r') as f:
+                        index = json.load(f)
+                else:
+                    index = {}
+                
+                # add the embedding path to the index
+                index[image_path] = embedding_path
+                with open(index_path, 'w') as f:
+                    json.dump(index, f)
+                
                 if save_embeddings and embedding_path:
-                    logger.debug(f"Saving embeddings to: {embedding_path}")
-                    np.save(embedding_path, image_embeddings.cpu().numpy())
+                    try:
+                        os.makedirs(os.path.dirname(embedding_path), exist_ok=True)
+                        # Save with metadata
+                        embedding_data = {
+                            'embeddings': image_embeddings.cpu(),
+                            'image_shape': image_array.shape[:2],
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        torch.save(embedding_data, embedding_path)
+                    except Exception as e:
+                        logger.error(f"Failed to save embeddings: {str(e)}")
 
             # Get masks
-            logger.debug("Getting masks from SAM")
             masks, scores = sam.get_masks(
                 sam.model,
                 image_array,
@@ -277,21 +280,17 @@ def predict():
             )
 
             if masks is None:
-                logger.error("No masks generated")
                 return jsonify({
                     'status': 'error',
                     'message': 'No valid masks generated'
                 }), 400
 
-            logger.debug(f"Generated {len(masks)} masks")
-
             # Convert to GeoJSON
-            logger.debug("Converting masks to GeoJSON")
             geojson = sam.raster_to_vector(
                 masks,
                 scores,
                 transform,
-                filename="/tmp/masks.geojson"
+                filename=f"{PLUGIN_DIR}/tmp/predictions_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
             )
 
             return jsonify({
@@ -301,16 +300,12 @@ def predict():
             }), 200
 
         except Exception as e:
-            logger.error("Error in prediction:")
-            logger.exception(e)
             return jsonify({
                 'status': 'error',
                 'message': f'Prediction error: {str(e)}'
             }), 500
 
     except Exception as e:
-        logger.error("Unexpected error in predict():")
-        logger.exception(e)
         return jsonify({
             'status': 'error',
             'message': f'Server error: {str(e)}'
