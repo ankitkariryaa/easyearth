@@ -1,7 +1,7 @@
 from qgis.PyQt.QtWidgets import (QAction, QDockWidget, QPushButton, QVBoxLayout, 
                                 QWidget, QMessageBox, QLabel, QHBoxLayout,
-                                QLineEdit, QFileDialog, QComboBox, QGroupBox, QGridLayout, QInputDialog, QProgressBar, QCheckBox, QButtonGroup, QRadioButton)
-from qgis.PyQt.QtCore import Qt, QByteArray, QBuffer, QIODevice, QProcess, QTimer, QProcessEnvironment, QVariant
+                                QLineEdit, QFileDialog, QComboBox, QGroupBox, QGridLayout, QInputDialog, QProgressBar, QCheckBox, QButtonGroup, QRadioButton, QDialog, QApplication)
+from qgis.PyQt.QtCore import Qt, QByteArray, QBuffer, QIODevice, QProcess, QTimer, QProcessEnvironment, QVariant, QSettings
 from qgis.PyQt.QtGui import QIcon, QMovie, QColor
 from qgis.core import (QgsVectorLayer, QgsFeature, QgsGeometry, QgsPolygon, 
                       QgsPointXY, QgsField, QgsProject, QgsPoint, QgsLineString,
@@ -25,13 +25,72 @@ import yaml
 import json
 from datetime import datetime
 
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+# Setup logger function stays at module level
+def setup_logger():
+    """Set up the logger for the plugin"""
+    try:
+        # Create logs directory if it doesn't exist
+        plugin_dir = os.path.dirname(__file__)
+        log_dir = os.path.join(plugin_dir, 'logs')
+        os.makedirs(log_dir, exist_ok=True)
+
+        # Create log file name with timestamp
+        log_file = os.path.join(log_dir, f'plugin_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+
+        # Create formatter
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+        # Create file handler
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(logging.DEBUG)
+
+        # Create console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        console_handler.setLevel(logging.DEBUG)
+
+        # Get logger
+        logger = logging.getLogger('EasyEarth')
+        logger.setLevel(logging.DEBUG)
+
+        # Remove any existing handlers
+        logger.handlers = []
+
+        # Add handlers
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+
+        # Log initial message
+        logger.info("=== EasyEarth Plugin Started ===")
+        logger.info(f"Log file: {log_file}")
+        
+        return logger
+
+    except Exception as e:
+        print(f"Failed to setup logger: {str(e)}")
+        return None
+
+# Create global logger instance
+logger = setup_logger()
 
 class EasyEarthPlugin:
     def __init__(self, iface):
         self.iface = iface
+        
+        # Initialize logger
+        # Use the global logger
+        global logger
+        self.logger = logger
+        
+        if self.logger is None:
+            # If global logger failed to initialize, create a basic logger
+            self.logger = logging.getLogger('EasyEarth')
+            self.logger.addHandler(logging.StreamHandler())
+            self.logger.setLevel(logging.DEBUG)
+        
+        self.logger.info("Initializing EasyEarth Plugin")
+        
         self.actions = []
         self.menu = 'EasyEarth'
         self.toolbar = self.iface.addToolBar(u'EasyEarth')
@@ -39,7 +98,7 @@ class EasyEarthPlugin:
         
         # Initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
-        
+
         # Docker configuration
         self.project_name = "easyearth_plugin"
         self.service_name = self.get_service_name()
@@ -81,7 +140,6 @@ class EasyEarthPlugin:
         self.real_time_prediction = False
         self.prompts_layer = None
         self.predictions_layer = None
-        logger.debug("Plugin initialized")
 
         # Initialize map tool
         self.map_tool = QgsMapToolEmitPoint(self.canvas)
@@ -99,6 +157,9 @@ class EasyEarthPlugin:
         self.start_point = None
         self.predictions_geojson = None
         self.predictions_layer = None
+
+        # Initialize data directory
+        self.data_dir = self.plugin_dir + '/user'
 
     def add_action(self, icon_path, text, callback, enabled_flag=True,
                   add_to_menu=True, add_to_toolbar=True, status_tip=None,
@@ -128,7 +189,27 @@ class EasyEarthPlugin:
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI"""
         try:
-            logger.debug("Starting initGui")
+            self.logger.debug("Starting initGui")
+            self.logger.info(f"Plugin directory: {self.plugin_dir}")
+            
+            self.logger.debug("Starting initGui")
+            
+            # Set up the icon
+            icon_path = os.path.join(self.plugin_dir, 'resources/icons/easyearth.png')
+            if not os.path.exists(icon_path):
+                self.logger.warning(f"Icon not found at: {icon_path}")
+                icon = QIcon()
+            else:
+                icon = QIcon(icon_path)
+            
+            # Create action with the icon
+            self.action = QAction(icon, 'EasyEarth', self.iface.mainWindow())
+            self.action.triggered.connect(self.run)
+            self.action.setEnabled(True)
+            
+            # Add to QGIS interface
+            self.iface.addPluginToMenu('EasyEarth', self.action)
+            self.iface.addToolBarIcon(self.action)
             
             # Create dock widget
             self.dock_widget = QDockWidget('EasyEarth Plugin', self.iface.mainWindow())
@@ -215,6 +296,8 @@ class EasyEarthPlugin:
             # File input
             file_layout = QHBoxLayout()
             self.image_path = QLineEdit()
+            self.image_path.setPlaceholderText("Enter image path or click Browse...")
+            self.image_path.returnPressed.connect(self.on_image_path_entered)
             self.browse_button = QPushButton("Browse Image")
             self.browse_button.clicked.connect(self.browse_image)
             file_layout.addWidget(self.image_path)
@@ -294,14 +377,15 @@ class EasyEarthPlugin:
             settings_group.setLayout(settings_layout)
             main_layout.addWidget(settings_group)
 
-            # Prediction Group
-            predict_group = QGroupBox("Prediction")
-            predict_layout = QVBoxLayout()
-            self.predict_button = QPushButton("Get Prediction")
-            self.predict_button.clicked.connect(self.get_prediction)
-            predict_layout.addWidget(self.predict_button)
-            predict_group.setLayout(predict_layout)
-            main_layout.addWidget(predict_group)
+            # TODO: add functions to allow predicting for multiple prompts...
+            # # Prediction Group
+            # predict_group = QGroupBox("Prediction")
+            # predict_layout = QVBoxLayout()
+            # self.predict_button = QPushButton("Get Prediction")
+            # self.predict_button.clicked.connect(self.get_prediction)
+            # predict_layout.addWidget(self.predict_button)
+            # predict_group.setLayout(predict_layout)
+            # main_layout.addWidget(predict_group)
 
             # Set the main layout
             main_widget.setLayout(main_layout)
@@ -322,61 +406,86 @@ class EasyEarthPlugin:
             self.status_timer.timeout.connect(self.check_server_status)
             self.status_timer.start(5000)  # Check every 5 seconds
 
-            logger.debug("Finished initGui setup")
+            self.logger.debug("Finished initGui setup")
         except Exception as e:
-            logger.error(f"Error in initGui: {str(e)}")
-            logger.exception("Full traceback:")
+            self.logger.error(f"Error in initGui: {str(e)}")
+            self.logger.exception("Full traceback:")
 
     def update_layer_combo(self):
         """Update the layers combo box with current raster layers"""
-        self.layer_combo.clear()
-        self.layer_combo.addItem("Select a layer...")
-        
-        # Add all raster layers to combo
-        for layer in QgsProject.instance().mapLayers().values():
-            if isinstance(layer, QgsRasterLayer):
-                self.layer_combo.addItem(layer.name(), layer)
+        try:
+            self.layer_combo.clear()
+            self.layer_combo.addItem("Select a layer...")
+            
+            # Add all raster layers to combo
+            for layer in QgsProject.instance().mapLayers().values():
+                if isinstance(layer, QgsRasterLayer):
+                    self.layer_combo.addItem(layer.name(), layer)
+
+            # Connect to layer selection change
+            self.layer_combo.currentIndexChanged.connect(self.on_layer_selected)
+
+        except Exception as e:
+            self.logger.error(f"Error updating layer combo: {str(e)}")
 
     def on_image_source_changed(self, text):
         """Handle image source selection change"""
-        if text == "File":
-            self.image_path.show()
-            self.browse_button.show()
-            self.layer_combo.hide()
-        else:
-            self.image_path.hide()
-            self.browse_button.hide()
-            self.layer_combo.show()
-        
-        if text != "File":
-            self.update_layer_combo()
+        try:
+            if text == "File":
+                self.image_path.show()
+                self.browse_button.show()
+                self.layer_combo.hide()
+            else:
+                self.image_path.hide()
+                self.browse_button.hide()
+                self.layer_combo.show()
+                self.update_layer_combo()
+
+            # Clear any existing layers
+            self.cleanup_previous_session()
+            
+            # Create new prediction layers if a layer is selected
+            if text == "Layer" and self.layer_combo.currentData():
+                self.image_path.setText(self.layer_combo.currentData().source())
+                self.create_prediction_layers()
+            
+        except Exception as e:
+            self.logger.error(f"Error in image source change: {str(e)}")
+            QMessageBox.critical(None, "Error", f"Failed to change image source: {str(e)}")
 
     def browse_image(self):
-        """Open file dialog for image selection and load it to canvas"""
+        """Open file dialog for image selection"""
         try:
-            # Set initial directory to plugin's data folder
-            initial_dir = os.path.join(self.plugin_dir, 'data')
-            if not os.path.exists(initial_dir):
-                initial_dir = ""
+            # Use data_dir as initial directory if it exists
+            initial_dir = self.data_dir if self.data_dir and os.path.exists(self.data_dir) else ""
 
             file_path, _ = QFileDialog.getOpenFileName(
                 self.dock_widget,
                 "Select Image File",
                 initial_dir,
-                "Image Files (*.png *.jpg *.jpeg *.tif *.tiff);;All Files (*.*)"
+                "Image Files (*.png *.jpg *.jpeg *.tif *.tiff *.JPG *.JPEG *.PNG *.TIF *.TIFF);;All Files (*.*)"
             )
             
             if file_path:
+                # Verify the file is within data_dir
+                if not os.path.commonpath([file_path]).startswith(os.path.commonpath([self.data_dir])):
+                    QMessageBox.warning(
+                        None,
+                        "Invalid Location",
+                        f"Please select an image from within the data directory:\n{self.data_dir}"
+                    )
+                    return
+                    
                 self.image_path.setText(file_path)
-                # Load image to canvas immediately
+                # Load image to canvas
                 self.load_image()
             
         except Exception as e:
-            logger.error(f"Error browsing image: {str(e)}")
+            self.logger.error(f"Error browsing image: {str(e)}")
             QMessageBox.critical(None, "Error", f"Failed to browse image: {str(e)}")
 
     def load_image(self):
-        """Load the selected image and create predictions layer"""
+        """Load the selected image, create prediction layers, and check for existing embeddings"""
         try:
             # Get the image path
             image_path = self.image_path.text()
@@ -385,87 +494,147 @@ class EasyEarthPlugin:
 
             # Load the image as a raster layer
             raster_layer = QgsRasterLayer(image_path, "Selected Image")
-            if raster_layer.isValid():
-                # Add raster layer to the project
-                QgsProject.instance().addMapLayer(raster_layer)
-                
-                # Create temporary file for predictions
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                self.predictions_geojson = os.path.join(
-                    tempfile.gettempdir(), 
-                    f'predictions_{timestamp}.geojson'
-                )
-                
-                # Create empty GeoJSON file for predictions
-                self.create_empty_geojson(self.predictions_geojson)
-                
-                # Create predictions layer
-                self.predictions_layer = self.create_vector_layer(
-                    self.predictions_geojson,
-                    "SAM Predictions",
-                    "prediction"
-                )
-                
-                # Enable drawing controls
-                self.draw_button.setEnabled(True)
+            if not raster_layer.isValid():
+                QMessageBox.warning(None, "Error", "Invalid raster layer")
+                return
+
+            # Add raster layer to the project
+            QgsProject.instance().addMapLayer(raster_layer)
+            
+            # Create prediction layers
+            self.create_prediction_layers()
+            
+            # Check for existing embedding
+            image_name = os.path.splitext(os.path.basename(image_path))[0]
+            embedding_dir = os.path.join(self.data_dir, 'embeddings')
+            embedding_path = os.path.join(embedding_dir, f"{image_name}.pt")
+            
+            if os.path.exists(embedding_path):
+                # Found existing embedding
+                self.load_embedding_radio.setChecked(True)
+                self.embedding_path_edit.setText(embedding_path)
+                self.embedding_path_edit.setEnabled(True)
+                self.embedding_browse_btn.setEnabled(True)
                 
                 self.iface.messageBar().pushMessage(
-                    "Success", 
-                    "Image loaded and prediction layer created",
-                    level=Qgis.Success,
-                    duration=3
+                    "Info", 
+                    f"Found existing embedding for {image_name}. Will use cached embedding for predictions.",
+                    level=Qgis.Info,
+                    duration=5
                 )
+                self.logger.info(f"Found existing embedding at: {embedding_path}")
             else:
-                QMessageBox.warning(None, "Error", "Invalid raster layer")
-
+                # No existing embedding
+                self.save_embedding_radio.setChecked(True)
+                embedding_path = os.path.join(embedding_dir, f"{image_name}.pt")
+                self.embedding_path_edit.setText(embedding_path)
+                self.embedding_path_edit.setEnabled(True)
+                self.embedding_browse_btn.setEnabled(True)
+                
+                self.iface.messageBar().pushMessage(
+                    "Info", 
+                    f"No existing embedding found for {image_name}. Will generate and save embedding on first prediction.",
+                    level=Qgis.Info,
+                    duration=5
+                )
+                self.logger.info(f"No existing embedding found, will save to: {embedding_path}")
         except Exception as e:
-            logger.error(f"Error loading image: {str(e)}")
+            self.logger.error(f"Error loading image: {str(e)}")
+            self.logger.exception("Full traceback:")
             QMessageBox.critical(None, "Error", f"Failed to load image: {str(e)}")
+
+    def create_empty_geojson(self, file_path):
+        """Create an empty GeoJSON file with project CRS"""
+        try:
+            # Get project CRS
+            project_crs = QgsProject.instance().crs()
+            
+            # Create GeoJSON structure with CRS information
+            empty_geojson = {
+                "type": "FeatureCollection",
+                "name": os.path.basename(file_path),
+                "crs": {
+                    "type": "name",
+                    "properties": {
+                        "name": project_crs.authid()
+                    }
+                },
+                "features": []
+            }
+            
+            # Write to file
+            with open(file_path, 'w') as f:
+                json.dump(empty_geojson, f)
+            
+            self.logger.debug(f"Created empty GeoJSON file at: {file_path}")
+            
+        except Exception as e:
+            self.logger.error(f"Error creating empty GeoJSON: {str(e)}")
+            raise
 
     def create_vector_layer(self, geojson_path, layer_name, layer_type):
         """Create and style a vector layer with project CRS"""
         try:
-            # Create vector layer
-            layer = QgsVectorLayer(geojson_path, layer_name, "ogr")
+            # Create vector layer with polygon geometry
+            layer = QgsVectorLayer(f"Polygon?crs={QgsProject.instance().crs().authid()}", 
+                                 layer_name, "memory")
+            
             if not layer.isValid():
                 raise Exception(f"Failed to create {layer_name} layer")
-            
-            # Set CRS to match project CRS
-            project_crs = QgsProject.instance().crs()
-            layer.setCrs(project_crs)
             
             # Add fields based on layer type
             provider = layer.dataProvider()
             if layer_type == "prompt":
                 fields = QgsFields()
-                fields.append(QgsField("id", QVariant.Int, "Integer"))
-                fields.append(QgsField("type", QVariant.String, "String", 20))  # length 20 for "Point" or "Box"
+                fields.append(QgsField("id", QVariant.Int))
+                fields.append(QgsField("type", QVariant.String))
                 provider.addAttributes(fields)
             else:  # prediction
                 fields = QgsFields()
-                fields.append(QgsField("id", QVariant.Int, "Integer"))
-                fields.append(QgsField("confidence", QVariant.Double, "Real", 10, 6))  # precision 6
-                fields.append(QgsField("class", QVariant.String, "String", 50))  # length 50
+                fields.append(QgsField("id", QVariant.Int))
+                fields.append(QgsField("confidence", QVariant.Double))
+                fields.append(QgsField("class", QVariant.String))
                 provider.addAttributes(fields)
             
             layer.updateFields()
             
-            # Add to project first
+            # Save as GeoJSON
+            save_options = QgsVectorFileWriter.SaveVectorOptions()
+            save_options.driverName = "GeoJSON"
+            save_options.fileEncoding = "UTF-8"
+            
+            # Write the empty layer to GeoJSON
+            writer = QgsVectorFileWriter.writeAsVectorFormat(
+                layer,
+                geojson_path,
+                "UTF-8",
+                QgsProject.instance().crs(),
+                "GeoJSON",
+                layerOptions=['COORDINATE_PRECISION=15']
+            )
+            
+            if writer[0] != QgsVectorFileWriter.NoError:
+                raise Exception(f"Failed to write GeoJSON file: {writer[0]}")
+            
+            # Now create the actual layer from the GeoJSON file
+            layer = QgsVectorLayer(geojson_path, layer_name, "ogr")
+            if not layer.isValid():
+                raise Exception(f"Failed to create valid layer from GeoJSON: {geojson_path}")
+            
+            # Add to project
             QgsProject.instance().addMapLayer(layer)
             
-            # Apply styling after layer is added to project
-            try:
-                if layer_type == "prompt":
-                    self.style_prompts_layer(layer)
-                else:
-                    self.style_predictions_layer(layer)
-            except Exception as e:
-                logger.error(f"Error applying style to layer: {str(e)}")
-            
+            # Apply styling
+            if layer_type == "prompt":
+                self.style_prompts_layer(layer)
+            else:
+                self.style_predictions_layer(layer)
+                
+            self.logger.debug(f"Created vector layer: {layer_name} from {geojson_path}")
             return layer
-            
+                
         except Exception as e:
-            logger.error(f"Error creating vector layer: {str(e)}")
+            self.logger.error(f"Error creating vector layer: {str(e)}")
             raise
 
     def style_prompts_layer(self, layer):
@@ -497,28 +666,33 @@ class EasyEarthPlugin:
             layer.triggerRepaint()
 
         except Exception as e:
-            logger.error(f"Error styling prompts layer: {str(e)}")
+            self.logger.error(f"Error styling prompts layer: {str(e)}")
             # Don't raise the exception - just log it and continue
             # This prevents the 'NoneType' error from stopping the layer creation
 
     def style_predictions_layer(self, layer):
         """Style the predictions layer"""
         try:
-            # Create a simple fill symbol for predictions
+            # Create a fill symbol with semi-transparent fill and solid outline
             symbol = QgsFillSymbol.createSimple({
                 'color': '0,255,0,50',  # Semi-transparent green
-                'outline_color': '0,255,0,255',  # Green outline
-                'outline_width': '0.8'
+                'outline_color': '0,255,0,255',  # Solid green outline
+                'outline_width': '0.8',
+                'outline_style': 'solid',
+                'style': 'solid'  # Fill style
             })
 
             # Create and apply the renderer
             renderer = QgsSingleSymbolRenderer(symbol)
             layer.setRenderer(renderer)
+            
+            # Set layer transparency
+            layer.setOpacity(0.5)  # 50% transparent
+            
             layer.triggerRepaint()
 
         except Exception as e:
-            logger.error(f"Error styling predictions layer: {str(e)}")
-            # Don't raise the exception - just log it and continue
+            self.logger.error(f"Error styling predictions layer: {str(e)}")
 
     def clear_points(self):
         """Clear all selected points"""
@@ -531,7 +705,7 @@ class EasyEarthPlugin:
                 self.point_layer.dataProvider().truncate()
                 self.point_layer.triggerRepaint()
             except Exception as e:
-                logger.error(f"Error clearing points: {str(e)}")
+                self.logger.error(f"Error clearing points: {str(e)}")
 
     def run(self):
         """Run method that loads and starts the plugin"""
@@ -594,10 +768,10 @@ class EasyEarthPlugin:
                 if file_path and os.path.exists(file_path):
                     os.remove(file_path)
             
-            logger.debug("Plugin unloaded successfully")
+            self.logger.debug("Plugin unloaded successfully")
         except Exception as e:
-            logger.error(f"Error during plugin unload: {str(e)}")
-            logger.exception("Full traceback:")
+            self.logger.error(f"Error during plugin unload: {str(e)}")
+            self.logger.exception("Full traceback:")
 
     def get_sudo_password(self):
         """Get sudo password if not already stored"""
@@ -622,7 +796,7 @@ class EasyEarthPlugin:
             full_cmd = f'echo "{password}" | sudo -S {cmd}'
             return subprocess.run(['bash', '-c', full_cmd], capture_output=True, text=True)
         except Exception as e:
-            logger.error(f"Error running sudo command: {str(e)}")
+            self.logger.error(f"Error running sudo command: {str(e)}")
             return None
 
     def get_service_name(self):
@@ -633,10 +807,10 @@ class EasyEarthPlugin:
                 compose_data = yaml.safe_load(file)
                 # Get the first service name from the services dictionary
                 service_name = next(iter(compose_data.get('services', {})))
-                logger.debug(f"Found service name: {service_name}")
+                self.logger.debug(f"Found service name: {service_name}")
                 return service_name
         except Exception as e:
-            logger.error(f"Error getting service name: {str(e)}")
+            self.logger.error(f"Error getting service name: {str(e)}")
             return "easyearth-server"  # fallback default
 
     def check_docker_image(self):
@@ -645,7 +819,7 @@ class EasyEarthPlugin:
             result = self.run_sudo_command(f"docker images {self.image_name}:latest -q")
             return bool(result and result.stdout.strip())
         except Exception as e:
-            logger.error(f"Error checking Docker image: {str(e)}")
+            self.logger.error(f"Error checking Docker image: {str(e)}")
             return False
 
     def check_docker_running(self):
@@ -654,7 +828,7 @@ class EasyEarthPlugin:
             result = self.run_sudo_command("docker info")
             return bool(result and result.returncode == 0)
         except Exception as e:
-            logger.error(f"Error checking Docker status: {str(e)}")
+            self.logger.error(f"Error checking Docker status: {str(e)}")
             return False
     
     def check_docker_container_running(self):
@@ -663,7 +837,7 @@ class EasyEarthPlugin:
             result = self.run_sudo_command("docker ps")
             return result.returncode == 0
         except Exception as e:
-            logger.error(f"Error checking Docker container status: {str(e)}")
+            self.logger.error(f"Error checking Docker container status: {str(e)}")
             return False
         
     def toggle_docker(self):
@@ -671,6 +845,30 @@ class EasyEarthPlugin:
         try:
             # TODO: need to deal with the case where the docker container is initilized outside qgis, so the docker_running is actually true
             # TODO: need to test the server status right after the docker container is finished starting
+            # Initialize_data_directory
+            self.data_dir = self.initialize_data_directory()
+
+            # Verify data directory exists
+            if not self.verify_data_directory():
+                return
+
+            # # Set environment variables including DATA_DIR
+            env = QProcessEnvironment.systemEnvironment()
+            if self.data_dir and os.path.exists(self.data_dir):
+                env.insert("DATA_DIR", self.data_dir)
+            else:
+                # Use default directory if data_dir is not set
+                default_data_dir = os.path.join(self.plugin_dir, 'user')
+                os.makedirs(default_data_dir, exist_ok=True)
+                self.data_dir = default_data_dir
+                # Give a warning window
+                msg = QMessageBox()
+                msg.setIcon(QMessageBox.Warning)
+                msg.setText("Data directory not defined or not found. Please move input images to the default directory: " + default_data_dir)
+                msg.setWindowTitle("Data Directory Warning")
+                msg.exec_()
+                env.insert("DATA_DIR", default_data_dir)
+
             if not self.docker_running:
                 # Check if Docker daemon is running
                 if not self.check_docker_running():
@@ -686,39 +884,39 @@ class EasyEarthPlugin:
                     msg.setWindowTitle("Docker Error")
                     msg.exec_()
                     return
-                else:
-                    # Get password at the start
-                    if not self.get_sudo_password():
-                        return
+                
+                # Get password at the start
+                if not self.get_sudo_password():
+                    return
 
-                    compose_path = os.path.join(self.plugin_dir, 'docker-compose.yml')
-                    
-                    # Initialize progress tracking
-                    self.current_step = 0
-                    self.count_docker_steps()
-                    self.progress_bar.setValue(0)
-                    self.progress_bar.show()
-                    self.progress_status.show()
-                    
-                    self.docker_process = QProcess()
-                    self.docker_process.finished.connect(self.on_docker_finished)
-                    self.docker_process.errorOccurred.connect(self.on_docker_error)
-                    self.docker_process.readyReadStandardError.connect(self.on_docker_stderr)
-                    self.docker_process.readyReadStandardOutput.connect(self.on_docker_stdout)
-                    
-                    self.docker_process.setWorkingDirectory(os.path.dirname(compose_path))
-                    
-                    # Check if we need to build
-                    if not self.check_docker_image():
-                        cmd = f'echo "{self.sudo_password}" | sudo -S docker-compose -p {self.project_name} -f "{compose_path}" up -d --build'
-                        self.progress_status.setText("Building Docker image (this may take a while)...")
-                    else:
-                        cmd = f'echo "{self.sudo_password}" | sudo -S docker-compose -p {self.project_name} -f "{compose_path}" up -d'
-                        self.progress_status.setText("Starting existing Docker container...")
-                    
-                    self.docker_process.start('bash', ['-c', cmd])
-                    self.docker_status.setText("Starting")
-                    self.docker_button.setEnabled(False)
+                compose_path = os.path.join(self.plugin_dir, 'docker-compose.yml')
+                
+                # Initialize progress tracking
+                self.current_step = 0
+                self.count_docker_steps()
+                self.progress_bar.setValue(0)
+                self.progress_bar.show()
+                self.progress_status.show()
+                
+                self.docker_process = QProcess()
+                self.docker_process.finished.connect(self.on_docker_finished)
+                self.docker_process.errorOccurred.connect(self.on_docker_error)
+                self.docker_process.readyReadStandardError.connect(self.on_docker_stderr)
+                self.docker_process.readyReadStandardOutput.connect(self.on_docker_stdout)
+                
+                self.docker_process.setWorkingDirectory(self.plugin_dir)
+                
+                # Check if we need to build
+                if not self.check_docker_image():
+                    cmd = f'echo "{self.sudo_password}" | sudo -S docker-compose -p {self.project_name} -f "{compose_path}" up -d --build'
+                    self.progress_status.setText("Building Docker image (this may take a while)...")
+                else:
+                    cmd = f'echo "{self.sudo_password}" | sudo -S docker-compose -p {self.project_name} -f "{compose_path}" up -d'
+                    self.progress_status.setText("Starting existing Docker container...")
+                
+                self.docker_process.start('bash', ['-c', cmd])
+                self.docker_status.setText("Starting")
+                self.docker_button.setEnabled(False)
                     
             else:
                 if not self.get_sudo_password():
@@ -740,19 +938,19 @@ class EasyEarthPlugin:
                 self.progress_bar.show()
 
         except Exception as e:
-            logger.error(f"Error controlling Docker: {str(e)}")
+            self.logger.error(f"Error controlling Docker: {str(e)}")
             QMessageBox.critical(None, "Error", f"Error controlling Docker: {str(e)}")
 
     def on_docker_stderr(self):
         """Handle Docker process stderr output"""
         error = self.docker_process.readAllStandardError().data().decode()
-        logger.error(f"Docker error: {error}")
+        self.logger.error(f"Docker error: {error}")
         self._process_docker_output(error)
 
     def on_docker_stdout(self):
         """Handle Docker process stdout output"""
         output = self.docker_process.readAllStandardOutput().data().decode()
-        logger.debug(f"Docker output: {output}")
+        self.logger.debug(f"Docker output: {output}")
         self._process_docker_output(output)
 
     def on_docker_finished(self, exit_code, exit_status):
@@ -776,7 +974,7 @@ class EasyEarthPlugin:
                     self.server_status.setStyleSheet("color: red;")
             else:
                 error_output = self.docker_process.readAllStandardError().data().decode()
-                logger.error(f"Docker command failed with exit code {exit_code}. Error: {error_output}")
+                self.logger.error(f"Docker command failed with exit code {exit_code}. Error: {error_output}")
                 QMessageBox.critical(None, "Error", 
                     f"Docker command failed with exit code {exit_code}")
                 self.docker_status.setText("Error")
@@ -797,7 +995,7 @@ class EasyEarthPlugin:
             QProcess.UnknownError: "Unknown error occurred"
         }.get(error, "An error occurred")
         
-        logger.error(f"Docker error: {error_msg}")
+        self.logger.error(f"Docker error: {error_msg}")
         QMessageBox.critical(None, "Error", f"Docker error: {error_msg}")
         self.docker_status.setText("Error")
         self.docker_button.setEnabled(True)
@@ -805,86 +1003,49 @@ class EasyEarthPlugin:
     def toggle_drawing(self, checked):
         """Toggle drawing mode"""
         try:
-            logger.info(f"Toggle drawing called with checked={checked}")
+            self.logger.info(f"Toggle drawing called with checked={checked}")
             
             if checked:
-                logger.info("Starting new drawing session")
-                
-                # Remove existing temporary files and layers before creating new ones
-                logger.info("Cleaning up previous session")
-                self.cleanup_previous_session()
-                
-                # Create new temporary files and layers
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                self.temp_prompts_geojson = os.path.join(
-                    tempfile.gettempdir(), 
-                    f'prompts_{timestamp}.geojson'
-                )
-                self.temp_predictions_geojson = os.path.join(
-                    tempfile.gettempdir(), 
-                    f'predictions_{timestamp}.geojson'
-                )
-                
-                logger.info(f"Created temporary file paths: \n"
-                           f"Prompts: {self.temp_prompts_geojson}\n"
-                           f"Predictions: {self.temp_predictions_geojson}")
-
-                # Create empty GeoJSON files
-                logger.info("Creating empty GeoJSON files")
-                self.create_empty_geojson(self.temp_prompts_geojson)
-                self.create_empty_geojson(self.temp_predictions_geojson)
-
-                # Create and add layers
-                logger.info("Creating vector layers")
-                self.prompts_layer = self.create_vector_layer(
-                    self.temp_prompts_geojson,
-                    "Drawing Prompts",
-                    "prompt"
-                )
-                self.predictions_layer = self.create_vector_layer(
-                    self.temp_predictions_geojson,
-                    "SAM Predictions",
-                    "prediction"
-                )
+                self.logger.info("Starting new drawing session")
 
                 # Initialize drawing tools
-                logger.info("Initializing drawing tools")
+                self.logger.info("Initializing drawing tools")
                 if not hasattr(self, 'map_tool'):
-                    logger.error("map_tool not initialized!")
+                    self.logger.error("map_tool not initialized!")
                     raise Exception("Drawing tool not properly initialized")
                     
                 if not hasattr(self, 'canvas'):
-                    logger.error("canvas not initialized!")
+                    self.logger.error("canvas not initialized!")
                     raise Exception("Canvas not properly initialized")
                     
                 self.canvas.setMapTool(self.map_tool)
                 
                 # Initialize rubber bands if not already done
                 if not hasattr(self, 'rubber_band'):
-                    logger.info("Creating new rubber band")
+                    self.logger.info("Creating new rubber band")
                     self.rubber_band = QgsRubberBand(self.canvas, QgsWkbTypes.PointGeometry)
                     self.rubber_band.setColor(QColor(255, 0, 0))
                     self.rubber_band.setWidth(2)
                 
                 if not hasattr(self, 'temp_rubber_band'):
-                    logger.info("Creating temporary rubber band")
+                    self.logger.info("Creating temporary rubber band")
                     self.temp_rubber_band = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
                     self.temp_rubber_band.setColor(QColor(255, 0, 0, 50))
                     self.temp_rubber_band.setWidth(2)
 
                 self.draw_button.setText("Stop Drawing")
                 
-                logger.info("Drawing session started successfully")
+                self.logger.info("Drawing session started successfully")
                 
             else:
-                logger.info("Stopping drawing session")
+                self.logger.info("Stopping drawing session")
                 self.canvas.unsetMapTool(self.map_tool)
                 self.draw_button.setText("Start Drawing")
-                logger.info("Drawing session stopped")
+                self.logger.info("Drawing session stopped")
 
         except Exception as e:
-            logger.error(f"Failed to toggle drawing: {str(e)}")
-            logger.exception("Full traceback:")
+            self.logger.error(f"Failed to toggle drawing: {str(e)}")
+            self.logger.exception("Full traceback:")
             QMessageBox.critical(None, "Error", f"Failed to start drawing: {str(e)}")
             self.draw_button.setChecked(False)
 
@@ -905,7 +1066,7 @@ class EasyEarthPlugin:
 
             # Reset feature count
             self.feature_count = 0
-            
+            self.prompt_count = 0
             # Clear any existing rubber bands
             if hasattr(self, 'rubber_band') and self.rubber_band:
                 self.rubber_band.reset()
@@ -916,18 +1077,8 @@ class EasyEarthPlugin:
             self.start_point = None
 
         except Exception as e:
-            logger.error(f"Error cleaning up previous session: {str(e)}")
+            self.logger.error(f"Error cleaning up previous session: {str(e)}")
             raise
-
-    def stop_drawing(self):
-        """Stop drawing mode"""
-        self.is_drawing = False
-        self.draw_button.setText("Start Drawing")
-        self.draw_type_combo.setEnabled(True)
-        self.iface.mapCanvas().unsetMapTool(self.draw_tool)
-        if self.temp_rubber_band:
-            self.temp_rubber_band.reset()
-        self.start_point = None
 
     def handle_draw_click(self, point, button):
         """Handle canvas clicks for drawing"""
@@ -940,12 +1091,18 @@ class EasyEarthPlugin:
             # Get the raster layer
             raster_layer = None
             if self.source_combo.currentText() == "File":
+                # Check image path for File source
+                if not self.image_path.text():
+                    raise ValueError("No image selected")
                 # Find the raster layer by name "Selected Image"
                 for layer in QgsProject.instance().mapLayers().values():
                     if isinstance(layer, QgsRasterLayer) and layer.name() == "Selected Image":
                         raster_layer = layer
                         break
             else:
+                # TODO: debug and test when choosing from opened layers
+                # TODO: use current or highlighted layer from layer combo box for Layer source
+                # Get layer directly from combo box for Layer source
                 raster_layer = self.layer_combo.currentData()
 
             if not raster_layer:
@@ -968,7 +1125,7 @@ class EasyEarthPlugin:
                 # Ensure coordinates are within image bounds
                 px = max(0, min(px, width - 1))
                 py = max(0, min(py, height - 1))
-                
+
                 # Show coordinates in message bar
                 self.iface.messageBar().pushMessage(
                     "Point Info", 
@@ -978,7 +1135,28 @@ class EasyEarthPlugin:
                     duration=3
                 )
                 
-                # Prepare point prompt
+                # Create prompt feature
+                prompt_feature = {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [point.x(), point.y()]
+                    },
+                    "properties": {
+                        "id": self.prompt_count if hasattr(self, 'prompt_count') else 1,
+                        "type": "Point",
+                        "pixel_x": px,
+                        "pixel_y": py
+                    }
+                }
+                
+                # Add prompt to layer
+                self.add_prompt_to_layer([prompt_feature])
+                
+                # Increment prompt counter
+                self.prompt_count = getattr(self, 'prompt_count', 1) + 1
+                
+                # Prepare prompt for server
                 prompt = [{
                     'type': 'Point',
                     'data': {
@@ -987,7 +1165,7 @@ class EasyEarthPlugin:
                     }
                 }]
                 
-                # Get prediction immediately
+                # Get prediction
                 self.get_prediction(prompt)
                 
             elif draw_type == "Box":
@@ -1005,6 +1183,7 @@ class EasyEarthPlugin:
                         duration=3
                     )
                 else:
+                    # TODO: to be verified and updated
                     # Calculate pixel coordinates for start point
                     start_px = int((self.start_point.x() - extent.xMinimum()) * width / extent.width())
                     start_py = int((extent.yMaximum() - self.start_point.y()) * height / extent.height())
@@ -1045,7 +1224,7 @@ class EasyEarthPlugin:
                         }
                     }]
                     
-                    # Get prediction immediately
+                    # Get prediction
                     self.get_prediction(prompt)
                     
                     # Reset for next box
@@ -1053,18 +1232,9 @@ class EasyEarthPlugin:
                     self.start_point = None
 
         except Exception as e:
-            logger.error(f"Error handling draw click: {str(e)}")
-            logger.exception("Full traceback:")
+            self.logger.error(f"Error handling draw click: {str(e)}")
+            self.logger.exception("Full traceback:")
             QMessageBox.critical(None, "Error", f"Failed to handle drawing: {str(e)}")
-
-    def handle_mouse_move(self, event):
-        """Handle mouse movement for box drawing"""
-        if not self.start_point:
-            return
-
-        point = self.draw_tool.toMapCoordinates(event.pos())
-        self.temp_rubber_band.reset(QgsWkbTypes.PolygonGeometry)
-        self.temp_rubber_band.addGeometry(self.create_box_geometry(self.start_point, point))
 
     def create_box_geometry(self, start, end):
         """Create a box geometry from two points"""
@@ -1077,101 +1247,69 @@ class EasyEarthPlugin:
         ]
         return QgsGeometry.fromPolygonXY([points])
 
-    def finish_drawing(self):
-        """Finish drawing and keep features in memory"""
-        try:
-            self.stop_drawing()
-            self.finish_button.setEnabled(False)
-            self.save_button.setEnabled(True)
-            
-            # Display feature count in message bar
-            self.iface.messageBar().pushMessage(
-                "Success", 
-                f"Drawing completed. {len(self.drawn_features)} features drawn.", 
-                level=Qgis.Success
-            )
-
-        except Exception as e:
-            logger.error(f"Error in finish_drawing: {str(e)}")
-            logger.exception("Full traceback:")
-            QMessageBox.critical(None, "Error", f"Failed to finish drawing: {str(e)}")
-
-    def save_features(self):
-        """Save drawn features to a permanent file"""
-        try:
-            file_path, _ = QFileDialog.getSaveFileName(
-                self.dock_widget,
-                "Save Features As",
-                "",
-                "GeoJSON (*.geojson);;All Files (*.*)"
-            )
-            
-            if not file_path:  # User cancelled
-                return
-
-            # Ensure file has .geojson extension
-            if not file_path.endswith('.geojson'):
-                file_path += '.geojson'
-
-            # Copy temporary file to selected location
-            shutil.copy2(self.temp_geojson_path, file_path)
-
-            self.iface.messageBar().pushMessage(
-                "Success", 
-                f"Features saved to: {file_path}", 
-                level=Qgis.Success,
-                duration=5
-            )
-
-        except Exception as e:
-            logger.error(f"Error saving features: {str(e)}")
-            logger.exception("Full traceback:")
-            QMessageBox.critical(None, "Error", f"Failed to save features: {str(e)}")
-
     def get_prediction(self, prompts):
         """Get prediction from SAM server and add to predictions layer"""
         try:
+            if not self.verify_data_directory():
+                return
+            
             # First check if server is running
             if not self.server_running:
                 raise ConnectionError("Server is not running. Please ensure Docker is started and the server is running.")
+            
+            # Show loading indicator
+            self.iface.messageBar().pushMessage("Info", "Getting prediction...", level=Qgis.Info)
+            QApplication.setOverrideCursor(Qt.WaitCursor)
 
-            # Get the image path
+            # Get the image path and convert for container
             image_path = self.image_path.text()
             if not image_path:
                 raise ValueError("No image selected")
             if not os.path.exists(image_path):
                 raise ValueError(f"Image file not found: {image_path}")
 
-            # Validate prompts format
-            if not isinstance(prompts, list) or not prompts:
-                raise ValueError("Invalid prompts format")
-            
-            # Get embedding settings
+            # Initialize embedding variables
             embedding_path = None
+            container_embedding_path = None
             save_embeddings = False
 
+            # Handle embedding settings
             if self.load_embedding_radio.isChecked():
                 embedding_path = self.embedding_path_edit.text().strip()
                 if not embedding_path:
                     raise ValueError("Please select an embedding file to load")
                 if not os.path.exists(embedding_path):
                     raise ValueError(f"Embedding file not found: {embedding_path}")
+                
+                # Convert embedding path for container
+                container_embedding_path = self.get_container_path(embedding_path)
                 save_embeddings = False
+                # logger.debug(f"Loading embeddings from: {embedding_path} -> {container_embedding_path}")
+                
             elif self.save_embedding_radio.isChecked():
                 embedding_path = self.embedding_path_edit.text().strip()
                 if not embedding_path:
                     raise ValueError("Please specify a path to save the embedding")
+                
+                # Ensure the directory exists
                 embedding_dir = os.path.dirname(embedding_path)
                 if not os.path.exists(embedding_dir):
-                    raise ValueError(f"Directory does not exist: {embedding_dir}")
-                if not os.access(embedding_dir, os.W_OK):
-                    raise ValueError(f"No write permission for directory: {embedding_dir}")
+                    os.makedirs(embedding_dir, exist_ok=True)
+                
+                # Convert embedding path for container
+                container_embedding_path = self.get_container_path(embedding_path)
                 save_embeddings = True
+                # logger.debug(f"Will save embeddings to: {embedding_path} -> {container_embedding_path}")
+
+            # Convert image path for container
+            container_image_path = self.get_container_path(image_path)
+            if not container_image_path:
+                raise ValueError("Image must be within the data directory")
 
             # Prepare request payload
             payload = {
-                "image_path": image_path,
-                "embedding_path": embedding_path,
+                "image_path": container_image_path,
+                "embedding_path": container_embedding_path,
                 "prompts": prompts,
                 "save_embeddings": save_embeddings
             }
@@ -1198,119 +1336,223 @@ class EasyEarthPlugin:
                 duration=5
             )
 
-            # Log detailed request information
-            logger.debug("=== Request Details ===")
-            logger.debug(f"Server URL: {self.server_url}/sam-predict")
-            logger.debug(f"Request payload: {json.dumps(payload, indent=2)}")
-
             # Send request to SAM server
             try:
                 response = requests.post(
                     f"{self.server_url}/sam-predict",
                     json=payload,
-                    timeout=60000  # TODO: it is very slow at the moment
+                    timeout=60000
                 )
                 
-                # Log the response details
-                logger.debug("=== Response Details ===")
-                logger.debug(f"Status code: {response.status_code}")
-                logger.debug(f"Response headers: {dict(response.headers)}")
-                
-                try:
-                    response_json = response.json()
-                    logger.debug(f"Response body: {json.dumps(response_json, indent=2)}")
-                except Exception as e:
-                    logger.debug(f"Raw response: {response.text}")
+                self.logger.debug(f"Server response status: {response.status_code}")
+                self.logger.debug(f"Server response text: {response.text}")
 
-                if response.status_code == 400:
-                    error_msg = "Bad request. Server rejected the input format."
-                    if response_json and 'message' in response_json:
-                        error_msg = f"Server error: {response_json['message']}"
-                    raise Exception(error_msg)
-                
-                response.raise_for_status()  # Raise exception for other error status codes
-                
-                result = response_json
-                if 'features' not in result:
-                    raise ValueError("Response missing 'features' field")
-
-                # Process features and add to layer
-                if result['features']:
-                    self.add_predictions_to_layer(result['features'])
-                    self.iface.messageBar().pushMessage(
-                        "Success", 
-                        f"Added {len(result['features'])} prediction(s) to layer",
-                        level=Qgis.Success,
-                        duration=2
-                    )
+                if response.status_code == 200:
+                    try:
+                        response_json = response.json()
+                        # self.logger.debug(f"Parsed response JSON: {json.dumps(response_json, indent=2)}")
+                        
+                        if not response_json:
+                            raise ValueError("Empty response from server")
+                            
+                        if 'features' not in response_json:
+                            raise ValueError("Response missing 'features' field")
+                            
+                        features = response_json['features']
+                        if not features:
+                            self.iface.messageBar().pushMessage(
+                                "Warning", 
+                                "No predictions returned from server",
+                                level=Qgis.Warning,
+                                duration=3
+                            )
+                            return
+                        
+                        # Add the predictions to our layer
+                        self.add_predictions_to_layer(features)
+                        
+                    except json.JSONDecodeError as e:
+                        raise ValueError(f"Invalid JSON response: {str(e)}")
+                        
                 else:
-                    self.iface.messageBar().pushMessage(
-                        "Warning", 
-                        "No predictions were received",
-                        level=Qgis.Warning,
-                        duration=2
-                    )
+                    error_msg = f"Server returned status code {response.status_code}"
+                    try:
+                        error_json = response.json()
+                        if 'message' in error_json:
+                            error_msg = error_json['message']
+                    except:
+                        error_msg = response.text
+                    raise ValueError(f"Server error: {error_msg}")
 
-            except Exception as e:
-                logger.error(f"Error getting prediction: {str(e)}")
-                logger.exception("Full traceback:")
-                QMessageBox.critical(None, "Error", f"Failed to get prediction: {str(e)}")
-
+            except requests.exceptions.RequestException as e:
+                raise ValueError(f"Request failed: {str(e)}")
+                
         except Exception as e:
-            logger.error(f"Error getting prediction: {str(e)}")
-            logger.exception("Full traceback:")
+            self.logger.error(f"Error getting prediction: {str(e)}")
+            self.logger.exception("Full traceback:")
             QMessageBox.critical(None, "Error", f"Failed to get prediction: {str(e)}")
+        finally:
+            QApplication.restoreOverrideCursor()
 
-    def add_predictions_to_layer(self, features):
-        """Add multiple GeoJSON features to the predictions layer at once"""
+    def add_predictions_to_layer(self, features, properties=None):
+        """Add or append GeoJSON features to predictions layer"""
         try:
-            logger.debug(f"Adding {len(features)} features to layer")
-            
-            if not self.predictions_layer:
-                logger.error("Predictions layer not initialized")
-                raise ValueError("Predictions layer not initialized")
+            if not features:
+                raise ValueError("No features to add")
 
-            # Create list to hold all QGIS features
-            qgis_features = []
-            fields = self.predictions_layer.fields()
+            # Check if layer is still valid
+            if hasattr(self, 'predictions_layer') and self.predictions_layer and not self.predictions_layer.isValid():
+                self.predictions_layer = None
+                self.predictions_geojson = None
 
-            # Convert all features
+            # Get the raster layer for coordinate transformation
+            raster_layer = None
+            if self.source_combo.currentText() == "File":
+                for layer in QgsProject.instance().mapLayers().values():
+                    if isinstance(layer, QgsRasterLayer) and layer.name() == "Selected Image":
+                        raster_layer = layer
+                        break
+            else:
+                raster_layer = self.layer_combo.currentData()
+
+            if not raster_layer:
+                raise ValueError("No raster layer found")
+
+            # Get raster extent and dimensions
+            extent = raster_layer.extent()
+            width = raster_layer.width()
+            height = raster_layer.height()
+
+            # Create coordinate transform if needed
+            raster_crs = raster_layer.crs()
+            project_crs = QgsProject.instance().crs()
+            transform = QgsCoordinateTransform(raster_crs, project_crs, QgsProject.instance())
+
+            # Convert features from pixel to map coordinates
             for feature in features:
-                qgis_feature = QgsFeature()
-                
-                # TODO: fix this part
-                # Convert geometry
                 geom_json = feature.get('geometry')
-                if geom_json:
-                    geometry = QgsGeometry.fromJson(json.dumps(geom_json))
-                    if geometry:
-                        qgis_feature.setGeometry(geometry)
-                
-                # Set attributes from properties
-                properties = feature.get('properties', {})
-                attributes = []
-                for field in fields:
-                    field_name = field.name()
-                    field_value = properties.get(field_name, None)
-                    attributes.append(field_value)
-                
-                qgis_feature.setAttributes(attributes)
-                qgis_features.append(qgis_feature)
+                if geom_json and geom_json['type'] == 'Polygon':
+                    map_coords = []
+                    for ring in geom_json['coordinates']:
+                        map_ring = []
+                        for pixel_coord in ring:
+                            # Convert pixel coordinates to map coordinates
+                            map_x = extent.xMinimum() + (pixel_coord[0] * extent.width() / width)
+                            map_y = extent.yMaximum() - (pixel_coord[1] * extent.height() / height)
+                            point = QgsPointXY(map_x, map_y)
+                            
+                            # Transform coordinates if needed
+                            if raster_crs != project_crs:
+                                point = transform.transform(point)
+                            
+                            map_ring.append(point)
+                        map_coords.append(map_ring)
+                    
+                    # Update geometry with transformed coordinates
+                    feature['geometry']['coordinates'] = [[(p.x(), p.y()) for p in ring] for ring in map_coords]
 
-            # Add all features at once
-            if not self.predictions_layer.dataProvider().addFeatures(qgis_features):
-                logger.error("Failed to add features to layer")
-                raise ValueError("Failed to add features to layer")
-            
-            self.predictions_layer.updateExtents()
-            self.predictions_layer.triggerRepaint()
-            
-            logger.debug("Successfully added all features to layer")
+            # If this is the first prediction, initialize everything
+            if not hasattr(self, 'predictions_geojson') or self.predictions_geojson is None:
+                # Initialize the GeoJSON structure
+                # TODO: add properties to the GeoJSON structure
+                self.predictions_geojson = {
+                    "type": "Feature",
+                    "properties": {
+                        "id": self.feature_count if hasattr(self, 'feature_count') else 1,
+                        "scores": 0,  # TODO: add scores to the GeoJSON structure
+                    },
+                    "geometry": {}  # Start with empty features list
+                }
+                
+                # Add the new features
+                self.predictions_geojson['geometry'] = features[0]['geometry']
+                
+                # Write initial GeoJSON file
+                with open(self.temp_predictions_geojson, 'w') as f:
+                    json.dump(self.predictions_geojson, f)
+                
+                # Verify file contents
+                self.logger.debug(f"Written GeoJSON content: {json.dumps(self.predictions_geojson, indent=2)}")
+
+                # Create new layer from this file
+                self.predictions_layer = QgsVectorLayer(
+                    self.temp_predictions_geojson,
+                    "SAM Predictions",
+                    "ogr"
+                )
+                
+                if not self.predictions_layer.isValid():
+                    raise ValueError("Failed to create valid vector layer")
+                
+                # Add to project
+                QgsProject.instance().addMapLayer(self.predictions_layer)
+                
+                # Apply styling
+                self.style_predictions_layer(self.predictions_layer)
+                
+                self.logger.debug(f"Initial layer feature count: {self.predictions_layer.featureCount()}")
+            else:
+                # Append new features to existing GeoJSON
+                self.predictions_geojson['features'].extend(features)
+                
+                # Write updated GeoJSON
+                with open(self.temp_predictions_geojson, 'w') as f:
+                    json.dump(self.predictions_geojson, f, indent=2)
+                
+                # Check if layer is still in project
+                if self.predictions_layer and QgsProject.instance().mapLayer(self.predictions_layer.id()):
+                    self.predictions_layer.dataProvider().reloadData()
+                    self.predictions_layer.updateExtents()
+                    self.predictions_layer.triggerRepaint()
+                else:
+                    # Recreate layer if it was removed
+                    self.predictions_layer = QgsVectorLayer(
+                        self.temp_predictions_geojson,
+                        "SAM Predictions",
+                        "ogr"
+                    )
+                    QgsProject.instance().addMapLayer(self.predictions_layer)
+                    self.style_predictions_layer(self.predictions_layer)
+
+            # Update canvas
+            self.iface.mapCanvas().refresh()
+
+            # Verify feature count
+            actual_count = self.predictions_layer.featureCount()
+            expected_count = len(self.predictions_geojson['features'])
+            self.logger.debug(f"Layer feature count: {actual_count} (added: {expected_count})")
 
         except Exception as e:
-            logger.error(f"Error adding predictions to layer: {str(e)}")
-            logger.exception("Full traceback:")
-            raise
+            self.logger.error(f"Error adding predictions: {str(e)}")
+            self.logger.exception("Full traceback:")
+            QMessageBox.critical(None, "Error", f"Failed to add predictions: {str(e)}")
+
+    def load_embedding(self, image_path):
+        """Load embedding for an image if it exists"""
+        try:
+            image_name = os.path.basename(image_path)
+            base_name = os.path.splitext(image_name)[0]
+            embedding_path = os.path.join(self.data_dir, 'embeddings', f"{base_name}.pt")
+            
+            if os.path.exists(embedding_path):
+                # logger.info(f"Found existing embedding for {image_name}")
+                return True
+            return False
+        except Exception as e:
+            # logger.error(f"Error checking embedding: {str(e)}")
+            return False
+
+    def clear_embeddings(self):
+        """Clear all saved embeddings"""
+        try:
+            embeddings_dir = os.path.join(self.data_dir, 'embeddings')
+            if os.path.exists(embeddings_dir):
+                for file in os.listdir(embeddings_dir):
+                    if file.endswith('.pt'):
+                        os.remove(os.path.join(embeddings_dir, file))
+            # logger.info("Cleared all embeddings")
+        except Exception as e:
+            self.logger.error(f"Error clearing embeddings: {str(e)}")
 
     def toggle_prediction_mode(self, state):
         """Handle prediction mode change"""
@@ -1334,7 +1576,7 @@ class EasyEarthPlugin:
             if os.path.exists(tmp_compose_path):
                 os.remove(tmp_compose_path)
         except Exception as e:
-            logger.error(f"Failed to cleanup temporary files: {str(e)}")
+            self.logger.error(f"Failed to cleanup temporary files: {str(e)}")
 
     def count_docker_steps(self):
         """Count the total number of steps in docker-compose and Dockerfile"""
@@ -1384,10 +1626,10 @@ class EasyEarthPlugin:
             
             self.total_steps = max(steps, 1)  # Ensure at least 1 step
             self.progress_bar.setMaximum(self.total_steps)
-            logger.debug(f"Total build steps: {self.total_steps}")
+            self.logger.debug(f"Total build steps: {self.total_steps}")
             
         except Exception as e:
-            logger.error(f"Error counting docker steps: {str(e)}")
+            self.logger.error(f"Error counting docker steps: {str(e)}")
             self.total_steps = 0
 
     def _process_docker_output(self, output):
@@ -1432,7 +1674,7 @@ class EasyEarthPlugin:
                         self.progress_bar.setValue(progress)
                         self.progress_status.setText(line)
                         self.progress_status.show()
-                        logger.debug(f"Docker progress: {line}")
+                        self.logger.debug(f"Docker progress: {line}")
                         break
 
     def check_server_status(self):
@@ -1460,23 +1702,23 @@ class EasyEarthPlugin:
                 cmd = f'echo "{self.sudo_password}" | sudo -S docker-compose -p {self.project_name} -f "{compose_path}" down'
                 subprocess.run(['bash', '-c', cmd], check=True)
         except Exception as e:
-            logger.error(f"Error cleaning up Docker: {str(e)}")
+            self.logger.error(f"Error cleaning up Docker: {str(e)}")
 
     def on_embedding_option_changed(self, button):
         """Handle embedding option changes"""
         try:
-            logger.debug(f"Embedding option changed to: {button.text()}")
+            self.logger.debug(f"Embedding option changed to: {button.text()}")
             enable_path = button != self.no_embedding_radio
             self.embedding_path_edit.setEnabled(enable_path)
             self.embedding_browse_btn.setEnabled(enable_path)
             
             if not enable_path:
                 self.embedding_path_edit.clear()
-                logger.debug("Cleared embedding path")
+                self.logger.debug("Cleared embedding path")
             
-            logger.debug(f"Path input enabled: {enable_path}")
+            self.logger.debug(f"Path input enabled: {enable_path}")
         except Exception as e:
-            logger.error(f"Error in embedding option change: {str(e)}")
+            self.logger.error(f"Error in embedding option change: {str(e)}")
 
     def browse_embedding(self):
         """Browse for embedding file"""
@@ -1489,7 +1731,7 @@ class EasyEarthPlugin:
                     "",
                     "Embedding Files (*.pt);;All Files (*.*)"
                 )
-                logger.debug(f"Selected existing embedding file: {file_path}")
+                self.logger.debug(f"Selected existing embedding file: {file_path}")
             else:
                 # Browse for save location
                 file_path, _ = QFileDialog.getSaveFileName(
@@ -1498,77 +1740,15 @@ class EasyEarthPlugin:
                     "",
                     "Embedding Files (*.pt);;All Files (*.*)"
                 )
-                logger.debug(f"Selected save location for embedding: {file_path}")
+                self.logger.debug(f"Selected save location for embedding: {file_path}")
 
             if file_path:
                 self.embedding_path_edit.setText(file_path)
-                logger.debug(f"Set embedding path to: {file_path}")
+                self.logger.debug(f"Set embedding path to: {file_path}")
 
         except Exception as e:
-            logger.error(f"Error browsing embedding: {str(e)}")
+            self.logger.error(f"Error browsing embedding: {str(e)}")
             QMessageBox.critical(None, "Error", f"Failed to browse embedding: {str(e)}")
-
-    def create_empty_geojson(self, file_path):
-        """Create an empty GeoJSON file with project CRS"""
-        try:
-            # Get project CRS
-            project_crs = QgsProject.instance().crs()
-            
-            # Create GeoJSON structure with CRS information
-            empty_geojson = {
-                "type": "FeatureCollection",
-                "name": os.path.basename(file_path),
-                "crs": {
-                    "type": "name",
-                    "properties": {
-                        "name": project_crs.authid()
-                    }
-                },
-                "features": []
-            }
-            
-            # Write to file
-            with open(file_path, 'w') as f:
-                json.dump(empty_geojson, f)
-            
-        except Exception as e:
-            logger.error(f"Error creating empty GeoJSON: {str(e)}")
-            raise
-
-    def add_feature_to_geojson(self, geojson_path, geometry, feature_type, layer):
-        """Add a feature to GeoJSON file and layer with correct CRS"""
-        try:
-            # Create feature
-            feature = QgsFeature()
-            
-            # Ensure geometry is in project CRS
-            project_crs = QgsProject.instance().crs()
-            if geometry.transform(QgsCoordinateTransform(
-                layer.crs(), 
-                project_crs,
-                QgsProject.instance()
-            )) != 0:
-                raise Exception("Failed to transform geometry to project CRS")
-            
-            feature.setGeometry(geometry)
-            
-            # Set attributes
-            self.feature_count += 1
-            feature.setAttributes([
-                self.feature_count,
-                feature_type
-            ])
-            
-            # Add to layer
-            layer.dataProvider().addFeatures([feature])
-            layer.updateExtents()
-            layer.triggerRepaint()
-            
-            return feature
-            
-        except Exception as e:
-            logger.error(f"Error adding feature to GeoJSON: {str(e)}")
-            raise
 
     def style_drawn_features(self):
         """Apply styling to the drawn features layer"""
@@ -1605,10 +1785,330 @@ class EasyEarthPlugin:
     def on_draw_type_changed(self, draw_type):
         """Handle draw type change"""
         try:
-            logger.debug(f"Draw type changed to: {draw_type}")
+            self.logger.debug(f"Draw type changed to: {draw_type}")
             if self.draw_button.isChecked():
                 # If currently drawing, restart with new type
                 self.draw_button.setChecked(False)
                 self.toggle_drawing(True)
         except Exception as e:
-            logger.error(f"Error in draw type change: {str(e)}")
+            self.logger.error(f"Error in draw type change: {str(e)}")
+
+    def initialize_data_directory(self):
+        """Initialize or load data directory configuration"""
+        try:
+            settings = QSettings()
+            data_dir = settings.value("easyearth/data_dir")
+            default_data_dir = os.path.join(self.plugin_dir, 'user')
+            
+            # Create custom dialog for directory choice
+            msg = QMessageBox()
+            msg.setIcon(QMessageBox.Question)
+            msg.setText("Data Directory Configuration")
+            msg.setInformativeText(
+                "Would you like to:\n\n"
+                "1. Use a custom directory for your data\n"
+                "2. Use the default directory\n\n"
+                f"Default directory: {default_data_dir}"
+            )
+            custom_button = msg.addButton("Select Custom Directory", QMessageBox.ActionRole)
+            default_button = msg.addButton("Use Default Directory", QMessageBox.ActionRole)
+            msg.setDefaultButton(custom_button)
+            
+            msg.exec_()
+            clicked_button = msg.clickedButton()
+            
+            if clicked_button == custom_button:
+                # User wants to select custom directory
+                data_dir = QFileDialog.getExistingDirectory(
+                    self.iface.mainWindow(),
+                    "Select Data Directory",
+                    os.path.expanduser("~"),
+                    QFileDialog.ShowDirsOnly
+                )
+                
+                if not data_dir:  # User cancelled selection
+                    self.logger.info("User cancelled custom directory selection, using default")
+                    data_dir = default_data_dir
+            else:
+                # User chose default directory
+                data_dir = default_data_dir
+            
+            # Create the directory and subdirectories
+            try:
+                os.makedirs(data_dir, exist_ok=True)
+                os.makedirs(os.path.join(data_dir, 'embeddings'), exist_ok=True)
+                
+                # Save the setting
+                settings.setValue("easyearth/data_dir", data_dir)
+                self.data_dir = data_dir
+                
+                # Show confirmation
+                QMessageBox.information(
+                    None,
+                    "Data Directory Set",
+                    f"Data directory has been set to:\n{data_dir}\n\n"
+                    "Please make sure to:\n"
+                    "1. Place your input images in this directory\n"
+                    "2. Ensure Docker has access to this location"
+                )
+                
+                self.logger.info(f"Data directory set to: {data_dir}")
+                
+            except Exception as e:
+                self.logger.error(f"Error creating directories: {str(e)}")
+                QMessageBox.critical(
+                    None,
+                    "Error",
+                    f"Failed to create data directory structure: {str(e)}\n"
+                    "Please check permissions and try again."
+                )
+                return None
+            
+            return data_dir
+
+        except Exception as e:
+            self.logger.error(f"Error initializing data directory: {str(e)}")
+            self.logger.exception("Full traceback:")
+            QMessageBox.critical(None, "Error", 
+                f"Failed to initialize data directory: {str(e)}")
+            return None
+
+    def get_container_path(self, host_path):
+        """Convert host path to container path"""
+        if not host_path:
+            return None
+        
+        # Convert path if it's in the data directory
+        if host_path.startswith(self.data_dir):
+            relative_path = os.path.relpath(host_path, self.data_dir)
+            return os.path.join('/usr/src/app/user', relative_path)
+        return host_path
+
+    def create_prediction_layers(self):
+        """Prepare for prediction and prompt layers"""
+        try:
+            # Clean up existing layers first
+            if hasattr(self, 'prompts_layer') and self.prompts_layer:
+                QgsProject.instance().removeMapLayer(self.prompts_layer)
+                self.prompts_layer = None
+            if hasattr(self, 'predictions_layer') and self.predictions_layer:
+                QgsProject.instance().removeMapLayer(self.predictions_layer)
+                self.predictions_layer = None
+            
+            # Reset the GeoJSON data
+            self.prompts_geojson = None
+            self.predictions_geojson = None
+            
+            # Create temporary file paths
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.temp_prompts_geojson = os.path.join(
+                tempfile.gettempdir(), 
+                f'prompts_{timestamp}.geojson'
+            )
+            self.temp_predictions_geojson = os.path.join(
+                tempfile.gettempdir(), 
+                f'predictions_{timestamp}.geojson'
+            )
+
+            # Initialize feature counter
+            self.feature_count = 1
+            
+            # Initialize prompt counter
+            self.prompt_count = 1
+            
+            self.logger.info(f"Prepared file paths: \n"
+                           f"Prompts: {self.temp_prompts_geojson}\n"
+                           f"Predictions: {self.temp_predictions_geojson}")
+
+            # Enable drawing controls
+            self.draw_button.setEnabled(True)
+            
+            self.iface.messageBar().pushMessage(
+                "Success", 
+                "Ready for drawing prompts and predictions",
+                level=Qgis.Success,
+                duration=3
+            )
+
+        except Exception as e:
+            self.logger.error(f"Error preparing layers: {str(e)}")
+            self.logger.exception("Full traceback:")
+            QMessageBox.critical(None, "Error", f"Failed to prepare layers: {str(e)}")
+
+    def on_layer_selected(self, index):
+        """Handle layer selection change and check for existing embeddings"""
+        try:
+            if index > 0:  # Skip "Select a layer..." item
+                selected_layer = self.layer_combo.currentData()
+                if not selected_layer:
+                    return
+                
+                self.image_path.setText(selected_layer.source())
+
+                # Create prediction layers
+                self.create_prediction_layers()
+                
+                # Check for existing embedding
+                layer_source = selected_layer.source()
+                image_name = os.path.splitext(os.path.basename(layer_source))[0]
+                embedding_dir = os.path.join(self.data_dir, 'embeddings')
+                embedding_path = os.path.join(embedding_dir, f"{image_name}.pt")
+                
+                if os.path.exists(embedding_path):
+                    # Found existing embedding
+                    self.load_embedding_radio.setChecked(True)
+                    self.embedding_path_edit.setText(embedding_path)
+                    self.embedding_path_edit.setEnabled(True)
+                    self.embedding_browse_btn.setEnabled(True)
+                    
+                    self.iface.messageBar().pushMessage(
+                        "Info", 
+                        f"Found existing embedding for {image_name}. Will use cached embedding for predictions.",
+                        level=Qgis.Info,
+                        duration=5
+                    )
+                    self.logger.info(f"Found existing embedding at: {embedding_path}")
+                else:
+                    # No existing embedding
+                    self.save_embedding_radio.setChecked(True)
+                    embedding_path = os.path.join(embedding_dir, f"{image_name}.pt")
+                    self.embedding_path_edit.setText(embedding_path)
+                    self.embedding_path_edit.setEnabled(True)
+                    self.embedding_browse_btn.setEnabled(True)
+                    
+                    self.iface.messageBar().pushMessage(
+                        "Info", 
+                        f"No existing embedding found for {image_name}. Will generate and save embedding on first prediction.",
+                        level=Qgis.Info,
+                        duration=5
+                    )
+                    self.logger.info(f"No existing embedding found, will save to: {embedding_path}")
+
+        except Exception as e:
+            self.logger.error(f"Error handling layer selection: {str(e)}")
+            self.logger.exception("Full traceback:")
+            QMessageBox.critical(None, "Error", f"Failed to handle layer selection: {str(e)}")
+
+    def on_image_path_entered(self):
+        """Handle manual entry of image path"""
+        try:
+            image_path = self.image_path.text().strip()
+            if not image_path:
+                return
+
+            # Check if file exists
+            if not os.path.exists(image_path):
+                QMessageBox.warning(None, "Error", f"Image file not found: {image_path}")
+                return
+
+            # Check if it's an image file
+            valid_extensions = ['.png', '.jpg', '.jpeg', '.tif', '.tiff']
+            # extend with capitalize
+            valid_extensions.extend([ext.upper() for ext in valid_extensions])
+
+            if not any(image_path.lower().endswith(ext) for ext in valid_extensions):
+                QMessageBox.warning(None, "Error", 
+                    "Invalid file type. Please select an image file (PNG, JPG, TIFF)")
+                return
+
+            # Load the image and check for embeddings
+            self.load_image()
+
+        except Exception as e:
+            self.logger.error(f"Error processing entered image path: {str(e)}")
+            QMessageBox.critical(None, "Error", f"Failed to load image: {str(e)}")
+
+    def verify_data_directory(self):
+        """Verify data directory is properly set up"""
+        if not self.data_dir:
+            QMessageBox.critical(None, "Error", 
+                "Data directory not configured.\n"
+                "Please restart the plugin to configure the data directory.")
+            return False
+        
+        if not os.path.exists(self.data_dir):
+            QMessageBox.critical(None, "Error", 
+                f"Data directory not found: {self.data_dir}\n"
+                "Please restart the plugin to reconfigure the data directory.")
+            return False
+        
+        return True
+
+    def add_prompt_to_layer(self, features):
+        """Add or append prompt features to prompts layer"""
+        try:
+            if not features:
+                raise ValueError("No features to add")
+
+            self.logger.debug(f"Incoming prompt features: {json.dumps(features, indent=2)}")
+
+            # If this is the first prompt, initialize everything
+            if not hasattr(self, 'prompts_geojson') or self.prompts_geojson is None:
+                # Initialize the GeoJSON structure
+                self.prompts_geojson = {
+                    "type": "FeatureCollection",
+                    "crs": {
+                        "type": "name",
+                        "properties": {
+                            "name": QgsProject.instance().crs().authid()
+                        }
+                    },
+                    "features": []  # Start with empty features list
+                }
+                
+                # Add the new features
+                self.prompts_geojson['features'] = features
+                
+                # Write initial GeoJSON file
+                with open(self.temp_prompts_geojson, 'w') as f:
+                    json.dump(self.prompts_geojson, f)
+                
+                # Verify file contents
+                self.logger.debug(f"Written GeoJSON content: {json.dumps(self.prompts_geojson, indent=2)}")
+                
+                # Create new layer from this file
+                self.prompts_layer = QgsVectorLayer(
+                    self.temp_prompts_geojson,
+                    "Drawing Prompts",
+                    "ogr"
+                )
+                
+                if not self.prompts_layer.isValid():
+                    raise ValueError("Failed to create valid vector layer")
+                
+                # Add to project
+                QgsProject.instance().addMapLayer(self.prompts_layer)
+                
+                # Apply styling
+                self.style_prompts_layer(self.prompts_layer)
+                
+                self.logger.debug(f"Initial layer feature count: {self.prompts_layer.featureCount()}")
+                
+            else:
+                # Append new features to existing GeoJSON
+                self.prompts_geojson['features'].extend(features)
+                
+                # Write updated GeoJSON
+                with open(self.temp_prompts_geojson, 'w') as f:
+                    json.dump(self.prompts_geojson, f)
+                
+                # Verify file contents
+                self.logger.debug(f"Updated GeoJSON content: {json.dumps(self.prompts_geojson, indent=2)}")
+                
+                # Reload the layer
+                self.prompts_layer.dataProvider().reloadData()
+                self.prompts_layer.updateExtents()
+                self.prompts_layer.triggerRepaint()
+
+            # Update canvas
+            self.iface.mapCanvas().refresh()
+
+            # Verify feature count
+            actual_count = self.prompts_layer.featureCount()
+            expected_count = len(self.prompts_geojson['features'])
+            self.logger.debug(f"Layer feature count: {actual_count} (added: {expected_count})")
+
+        except Exception as e:
+            self.logger.error(f"Error adding prompts: {str(e)}")
+            self.logger.exception("Full traceback:")
+            QMessageBox.critical(None, "Error", f"Failed to add prompts: {str(e)}")
