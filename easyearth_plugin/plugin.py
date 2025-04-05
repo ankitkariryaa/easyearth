@@ -1456,16 +1456,28 @@ class EasyEarthPlugin:
                 # Initialize the GeoJSON structure
                 # TODO: add properties to the GeoJSON structure
                 self.predictions_geojson = {
+                    "type": "FeatureCollection",
+                    "features": [],
+                    "crs": {
+                        "type": "name",
+                        "properties": {
+                            "name": QgsProject.instance().crs().authid()
+                        }
+                    }
+                }
+
+                # Add the new feature with properties
+                feature = {
                     "type": "Feature",
                     "properties": {
                         "id": self.feature_count if hasattr(self, 'feature_count') else 1,
-                        "scores": 0,  # TODO: add scores to the GeoJSON structure
+                        "scores": features[0].get('properties', {}).get('scores', 0),
                     },
-                    "geometry": {}  # Start with empty features list
+                    "geometry": features[0]['geometry']
                 }
                 
-                # Add the new features
-                self.predictions_geojson['geometry'] = features[0]['geometry']
+                # Add feature to the collection
+                self.predictions_geojson['features'].append(feature)
                 
                 # Write initial GeoJSON file
                 with open(self.temp_predictions_geojson, 'w') as f:
