@@ -241,7 +241,8 @@ def predict():
                 image_embeddings = sam.get_image_embeddings(sam.model, sam.processor, image_array)
 
                 # generate an index file to relate the image to the embedding
-                DATA_DIR = os.path.dirname(image_path)
+                # get env variable DATA_DIR
+                DATA_DIR = os.environ.get('EASYEARTH_DATA_DIR')
                 os.makedirs(os.path.join(DATA_DIR, 'embeddings'), exist_ok=True)
                 index_path = os.path.join(DATA_DIR, 'embeddings', 'index.json')
                 if os.path.exists(index_path):

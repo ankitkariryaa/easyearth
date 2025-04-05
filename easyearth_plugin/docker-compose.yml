@@ -11,11 +11,12 @@ services:
       - .:/usr/src/app
       - /home/yan/Downloads:/usr/src/app/data
       - type: bind
-      # TODO: make the alternative folder more flexible or more general that fits most users and os
-        source: ${DATA_DIR:-/home/yan/Downloads}
+      # TODO: verify and update. For now if the data path changes, the docker image needs to be rebuilt to uodate the path..and make the alternative folder more flexible or more general that fits most users and os.
+        source: ${DATA_DIR:-/home/yan/Downloads/data}
         target: /usr/src/app/user
     environment:
       - PYTHONUNBUFFERED=1
+      - EASYEARTH_DATA_DIR=${DATA_DIR:-/home/yan/Downloads/data}
 
     # tty: true
     # stdin_open: true

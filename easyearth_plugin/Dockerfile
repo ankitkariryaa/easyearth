@@ -4,6 +4,7 @@ FROM python:3.10
 RUN apt-get update && apt-get install -y libexpat1 && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /usr/src/app
+RUN mkdir -p /usr/src/app/user
 WORKDIR /usr/src/app
 
 # Copy only requirements first to leverage Docker cache
