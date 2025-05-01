@@ -130,7 +130,55 @@ paths:
                       properties:
                         type:
                           type: string
-                          enum: [ "Class", "Points", "Polygons" ]
+                          enum: ["Class", "Points", "Polygons"]
+                        data:
+                          type: object
+                          description: Prediction-specific data
+  /segmentation-predict:
+    post:
+      summary: Segment all relevant objects for a given image using a segmentation model with no prompt engineering
+      operationId: easyearth.controllers.segmentation_controller.predict
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                image_path:
+                  type: string
+                  description: Path to the image
+                aois:
+                  type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum: ["Polygons"]
+                        data:
+                          type: object
+                          description: Prediction-specific data
+              required:
+                - image_path
+      responses:
+        "200":
+          description: Analysis response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model_description:
+                    type: string
+                  predictions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum: ["Class", "Polygons"]
                         data:
                           type: object
                           description: Prediction-specific data
