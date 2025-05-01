@@ -833,22 +833,39 @@ class EasyEarthPlugin:
     
     def check_container_running(self):
         """Check if the right container has been started outside QGIS"""
-        # Check if container exists and is running
-        cmd = f'echo "{self.sudo_password}" | sudo docker ps --filter "name={self.project_name}" --format "{{{{.Status}}}}"'
-        result = self.run_sudo_command(cmd)
-        
-        if not result or result.returncode != 0:
-            self.logger.error("Failed to check container status")
-            return False
+        try:
+            # Check if container exists and is running
+            cmd = f'echo "{self.sudo_password}" | sudo docker ps --filter "name={self.project_name}" --format "{{{{.Status}}}}"'
+            self.logger.debug(f"Checking container status with command: {cmd}")
+            
+            result = self.run_sudo_command(cmd)
+            
+            if not result:
+                self.logger.error("Command execution returned None")
+                return False
+                
+            if result.returncode != 0:
+                self.logger.error(f"Command failed with return code: {result.returncode}")
+                self.logger.error(f"Error output: {result.stderr}")
+                return False
 
-        container_status = result.stdout.strip()
-        
-        if container_status and 'Up' in container_status:
-            self.docker_running = True
-            self.docker_status.setText("Running")
-            self.docker_button.setText("Stop Docker")
-            return True
-        else:
+            container_status = result.stdout.strip()
+            self.logger.debug(f"Container status: '{container_status}'")
+            
+            if container_status and 'Up' in container_status:
+                self.logger.info(f"Container is running with status: {container_status}")
+                # Update UI and state
+                self.docker_running = True
+                self.docker_status.setText("Running")
+                self.docker_button.setText("Stop Docker")
+                return True
+            else:
+                self.logger.info(f"Container is not running. Status: {container_status}")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error checking container status: {str(e)}")
+            self.logger.exception("Full traceback:")
             return False
     
     def toggle_docker(self):
@@ -895,7 +912,9 @@ class EasyEarthPlugin:
                     msg.setWindowTitle("Docker Error")
                     msg.exec_()
                     return
-
+                # Get password at the start
+                if not self.get_sudo_password():
+                    return
                 # Check if container is already running
                 if self.check_container_running():
                     self.logger.info("Container already running, skipping startup")
@@ -913,9 +932,6 @@ class EasyEarthPlugin:
                     self.check_server_status()
                 
                 else:
-                    # Get password at the start
-                    if not self.get_sudo_password():
-                        return
 
                     compose_path = os.path.join(self.plugin_dir, 'docker-compose.yml')
                     
