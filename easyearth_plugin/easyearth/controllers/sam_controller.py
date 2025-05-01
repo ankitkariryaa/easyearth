@@ -238,7 +238,7 @@ def predict():
             # Generate new embeddings if needed
             else:
                 logger.info("Generating new embeddings")
-                image_embeddings = sam.get_image_embeddings(sam.model, sam.processor, image_array)
+                image_embeddings = sam.get_image_embeddings(image_array)
 
                 # generate an index file to relate the image to the embedding
                 # get env variable DATA_DIR
@@ -271,10 +271,8 @@ def predict():
 
             # Get masks
             masks, scores = sam.get_masks(
-                sam.model,
                 image_array,
-                sam.processor,
-                image_embeddings,
+                image_embeddings=image_embeddings,
                 input_points=transformed_prompts['points'] if transformed_prompts['points'] else None,
                 input_labels=transformed_prompts['labels'] if transformed_prompts['labels'] else None,
                 input_boxes=transformed_prompts['boxes'] if transformed_prompts['boxes'] else None,
