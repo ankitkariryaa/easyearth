@@ -831,15 +831,26 @@ class EasyEarthPlugin:
             self.logger.error(f"Error checking Docker status: {str(e)}")
             return False
     
-    def check_docker_container_running(self):
-        """Check if Docker container is running"""
-        try:
-            result = self.run_sudo_command("docker ps")
-            return result.returncode == 0
-        except Exception as e:
-            self.logger.error(f"Error checking Docker container status: {str(e)}")
-            return False
+    def check_container_running(self):
+        """Check if the right container has been started outside QGIS"""
+        # Check if container exists and is running
+        cmd = f'echo "{self.sudo_password}" | sudo docker ps --filter "name={self.project_name}" --format "{{{{.Status}}}}"'
+        result = self.run_sudo_command(cmd)
         
+        if not result or result.returncode != 0:
+            self.logger.error("Failed to check container status")
+            return False
+
+        container_status = result.stdout.strip()
+        
+        if container_status and 'Up' in container_status:
+            self.docker_running = True
+            self.docker_status.setText("Running")
+            self.docker_button.setText("Stop Docker")
+            return True
+        else:
+            return False
+    
     def toggle_docker(self):
         """Toggle Docker container state"""
         try:
@@ -852,7 +863,7 @@ class EasyEarthPlugin:
             if not self.verify_data_directory():
                 return
 
-            # # Set environment variables including DATA_DIR
+            # Set environment variables including DATA_DIR
             env = QProcessEnvironment.systemEnvironment()
             if self.data_dir and os.path.exists(self.data_dir):
                 env.insert("DATA_DIR", self.data_dir)
@@ -884,39 +895,56 @@ class EasyEarthPlugin:
                     msg.setWindowTitle("Docker Error")
                     msg.exec_()
                     return
-                
-                # Get password at the start
-                if not self.get_sudo_password():
-                    return
 
-                compose_path = os.path.join(self.plugin_dir, 'docker-compose.yml')
+                # Check if container is already running
+                if self.check_container_running():
+                    self.logger.info("Container already running, skipping startup")
+                    self.iface.messageBar().pushMessage(
+                        "Info", 
+                        "Container already running and server responding",
+                        level=Qgis.Info,
+                        duration=3
+                    )
+                    self.docker_running = True
+                    self.docker_status.setText("Running")
+                    self.docker_button.setText("Stop Docker")
+                    self.progress_status.setText("Docker started successfully")
+                    # Trigger immediate server status check
+                    self.check_server_status()
                 
-                # Initialize progress tracking
-                self.current_step = 0
-                self.count_docker_steps()
-                self.progress_bar.setValue(0)
-                self.progress_bar.show()
-                self.progress_status.show()
-                
-                self.docker_process = QProcess()
-                self.docker_process.finished.connect(self.on_docker_finished)
-                self.docker_process.errorOccurred.connect(self.on_docker_error)
-                self.docker_process.readyReadStandardError.connect(self.on_docker_stderr)
-                self.docker_process.readyReadStandardOutput.connect(self.on_docker_stdout)
-                
-                self.docker_process.setWorkingDirectory(self.plugin_dir)
-                
-                # Check if we need to build
-                if not self.check_docker_image():
-                    cmd = f'echo "{self.sudo_password}" | sudo -S docker-compose -p {self.project_name} -f "{compose_path}" up -d --build'
-                    self.progress_status.setText("Building Docker image (this may take a while)...")
                 else:
-                    cmd = f'echo "{self.sudo_password}" | sudo -S docker-compose -p {self.project_name} -f "{compose_path}" up -d'
-                    self.progress_status.setText("Starting existing Docker container...")
-                
-                self.docker_process.start('bash', ['-c', cmd])
-                self.docker_status.setText("Starting")
-                self.docker_button.setEnabled(False)
+                    # Get password at the start
+                    if not self.get_sudo_password():
+                        return
+
+                    compose_path = os.path.join(self.plugin_dir, 'docker-compose.yml')
+                    
+                    # Initialize progress tracking
+                    self.current_step = 0
+                    self.count_docker_steps()
+                    self.progress_bar.setValue(0)
+                    self.progress_bar.show()
+                    self.progress_status.show()
+                    
+                    self.docker_process = QProcess()
+                    self.docker_process.finished.connect(self.on_docker_finished)
+                    self.docker_process.errorOccurred.connect(self.on_docker_error)
+                    self.docker_process.readyReadStandardError.connect(self.on_docker_stderr)
+                    self.docker_process.readyReadStandardOutput.connect(self.on_docker_stdout)
+                    
+                    self.docker_process.setWorkingDirectory(self.plugin_dir)
+                    
+                    # Check if we need to build
+                    if not self.check_docker_image():
+                        cmd = f'echo "{self.sudo_password}" | sudo -S docker-compose -p {self.project_name} -f "{compose_path}" up -d --build'
+                        self.progress_status.setText("Building Docker image (this may take a while)...")
+                    else:
+                        cmd = f'echo "{self.sudo_password}" | sudo -S docker-compose -p {self.project_name} -f "{compose_path}" up -d'
+                        self.progress_status.setText("Starting existing Docker container...")
+                    
+                    self.docker_process.start('bash', ['-c', cmd])
+                    self.docker_status.setText("Starting")
+                    self.docker_button.setEnabled(False)
                     
             else:
                 if not self.get_sudo_password():
