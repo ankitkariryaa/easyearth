@@ -401,6 +401,7 @@ class EasyEarthPlugin:
             # Connect to QGIS quit signal
             QgsApplication.instance().aboutToQuit.connect(self.cleanup_docker)
 
+            # TODO: add check at the start and disable docker button
             # Start periodic server status check
             self.status_timer = QTimer()
             self.status_timer.timeout.connect(self.check_server_status)
@@ -842,12 +843,12 @@ class EasyEarthPlugin:
             
             if not result:
                 self.logger.error("Command execution returned None")
-                return False
+                self.docker_running = False
                 
             if result.returncode != 0:
                 self.logger.error(f"Command failed with return code: {result.returncode}")
                 self.logger.error(f"Error output: {result.stderr}")
-                return False
+                self.docker_running = False
 
             container_status = result.stdout.strip()
             self.logger.debug(f"Container status: '{container_status}'")
@@ -858,10 +859,9 @@ class EasyEarthPlugin:
                 self.docker_running = True
                 self.docker_status.setText("Running")
                 self.docker_button.setText("Stop Docker")
-                return True
             else:
                 self.logger.info(f"Container is not running. Status: {container_status}")
-                return False
+                self.docker_running = False
 
         except Exception as e:
             self.logger.error(f"Error checking container status: {str(e)}")
@@ -871,33 +871,35 @@ class EasyEarthPlugin:
     def toggle_docker(self):
         """Toggle Docker container state"""
         try:
-            # TODO: need to deal with the case where the docker container is initilized outside qgis, so the docker_running is actually true
-            # TODO: need to test the server status right after the docker container is finished starting
-            # Initialize_data_directory
-            self.data_dir = self.initialize_data_directory()
 
-            # Verify data directory exists
-            if not self.verify_data_directory():
-                return
-
-            # Set environment variables including DATA_DIR
-            env = QProcessEnvironment.systemEnvironment()
-            if self.data_dir and os.path.exists(self.data_dir):
-                env.insert("DATA_DIR", self.data_dir)
-            else:
-                # Use default directory if data_dir is not set
-                default_data_dir = os.path.join(self.plugin_dir, 'user')
-                os.makedirs(default_data_dir, exist_ok=True)
-                self.data_dir = default_data_dir
-                # Give a warning window
-                msg = QMessageBox()
-                msg.setIcon(QMessageBox.Warning)
-                msg.setText("Data directory not defined or not found. Please move input images to the default directory: " + default_data_dir)
-                msg.setWindowTitle("Data Directory Warning")
-                msg.exec_()
-                env.insert("DATA_DIR", default_data_dir)
-
+            self.check_container_running()
             if not self.docker_running:
+                # TODO: need to deal with the case where the docker container is initilized outside qgis, so the docker_running is actually true
+                # TODO: need to test the server status right after the docker container is finished starting
+                # Initialize_data_directory
+                self.data_dir = self.initialize_data_directory() # TODO: put in initialization function of qgis 
+
+                # Verify data directory exists
+                if not self.verify_data_directory():
+                    return
+
+                # Set environment variables including DATA_DIR
+                env = QProcessEnvironment.systemEnvironment()
+                if self.data_dir and os.path.exists(self.data_dir):
+                    env.insert("DATA_DIR", self.data_dir)
+                else:
+                    # Use default directory if data_dir is not set
+                    default_data_dir = os.path.join(self.plugin_dir, 'user')
+                    os.makedirs(default_data_dir, exist_ok=True)
+                    self.data_dir = default_data_dir
+                    # Give a warning window
+                    msg = QMessageBox()
+                    msg.setIcon(QMessageBox.Warning)
+                    msg.setText("Data directory not defined or not found. Please move input images to the default directory: " + default_data_dir)
+                    msg.setWindowTitle("Data Directory Warning")
+                    msg.exec_()
+                    env.insert("DATA_DIR", default_data_dir)
+                    
                 # Check if Docker daemon is running
                 if not self.check_docker_running():
                     msg = QMessageBox()
@@ -912,9 +914,11 @@ class EasyEarthPlugin:
                     msg.setWindowTitle("Docker Error")
                     msg.exec_()
                     return
+                
                 # Get password at the start
                 if not self.get_sudo_password():
                     return
+                
                 # Check if container is already running
                 if self.check_container_running():
                     self.logger.info("Container already running, skipping startup")
@@ -928,11 +932,8 @@ class EasyEarthPlugin:
                     self.docker_status.setText("Running")
                     self.docker_button.setText("Stop Docker")
                     self.progress_status.setText("Docker started successfully")
-                    # Trigger immediate server status check
-                    self.check_server_status()
                 
                 else:
-
                     compose_path = os.path.join(self.plugin_dir, 'docker-compose.yml')
                     
                     # Initialize progress tracking
@@ -961,9 +962,11 @@ class EasyEarthPlugin:
                     self.docker_process.start('bash', ['-c', cmd])
                     self.docker_status.setText("Starting")
                     self.docker_button.setEnabled(False)
+                
+                self.check_server_status()
                     
             else:
-                if not self.get_sudo_password():
+                if not self.get_sudo_password():  # TODO: move to the initalization of QGIS
                     return
 
                 compose_path = os.path.join(self.plugin_dir, 'docker-compose.yml')
@@ -1007,8 +1010,6 @@ class EasyEarthPlugin:
                     self.docker_status.setText("Running")
                     self.docker_button.setText("Stop Docker")
                     self.progress_status.setText("Docker started successfully")
-                    # Trigger immediate server status check
-                    self.check_server_status()
                 else:
                     self.docker_running = False
                     self.docker_status.setText("Stopped")
@@ -1741,6 +1742,10 @@ class EasyEarthPlugin:
                 self.server_status.setText("Running")
                 self.server_status.setStyleSheet("color: green;")
                 self.server_running = True
+
+                self.docker_running = True
+                self.docker_status.setText("Running")
+                self.docker_button.setText("Stop Docker")
             else:
                 self.server_status.setText("Error")
                 self.server_status.setStyleSheet("color: red;")
