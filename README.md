@@ -1,7 +1,9 @@
 # Easy Earth project with Flask, Connexion and OpenApi 3
 
 
-EasyEarth - QGIS plugin powered by huggingface, Flask and Connexion
+EasyEarth - QGIS plugin powered by huggingface, Flask and Connexion 
+
+Check the demo [here](https://drive.google.com/file/d/1AShHsXkYoBj4zltAGkdnzEfKp2GSFFeS/view)
 
 
 ![image](https://github.com/user-attachments/assets/1447e21f-6cb2-4917-8d06-ba9960b78d87)
