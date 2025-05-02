@@ -3,6 +3,10 @@
 
 EasyEarth - QGIS plugin powered by huggingface, Flask and Connexion
 
+
+![image](https://github.com/user-attachments/assets/1447e21f-6cb2-4917-8d06-ba9960b78d87)
+
+
 ```http
 https://github.com/zalando/connexion
 ```
