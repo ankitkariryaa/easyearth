@@ -134,7 +134,7 @@ paths:
                         data:
                           type: object
                           description: Prediction-specific data
-  /segmentation-predict:
+  /segment-predict:
     post:
       summary: Segment all relevant objects for a given image using a segmentation model with no prompt engineering
       operationId: easyearth.controllers.segmentation_controller.predict
@@ -150,15 +150,15 @@ paths:
                   description: Path to the image
                 aois:
                   type: array
-                    items:
-                      type: object
-                      properties:
-                        type:
-                          type: string
-                          enum: ["Polygons"]
-                        data:
-                          type: object
-                          description: Prediction-specific data
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum: ["Polygons"]
+                      data:
+                        type: object
+                        description: Prediction-specific data
               required:
                 - image_path
       responses:
