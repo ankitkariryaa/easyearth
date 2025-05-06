@@ -186,7 +186,7 @@ def predict():
                 masks,
                 scores,
                 transform,
-                filename="/home/yan/PycharmProjects/easyearth/tmp/masks.geojson"
+                filename="/tmp/masks.geojson"
             )
 
             return jsonify({

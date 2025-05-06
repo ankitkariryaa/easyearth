@@ -19,7 +19,7 @@ LOG_DIR = os.path.join(PLUGIN_DIR, 'logs')
 os.makedirs(LOG_DIR, exist_ok=True)
 
 # Set up logging configuration
-log_file = os.path.join(LOG_DIR, f'sam_server_{datetime.now().strftime("%Y%m%d")}.log')
+log_file = os.path.join(LOG_DIR, f'segment_server_{datetime.now().strftime("%Y%m%d")}.log')
 
 # Configure root logger
 logging.basicConfig(
@@ -131,7 +131,7 @@ def predict():
             geojson = segformer.raster_to_vector(
                 masks,
                 transform,
-                filename=f"{PLUGIN_DIR}/tmp/predictions_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
+                filename=f"{PLUGIN_DIR}/tmp/predict-segment_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
             )
 
             return jsonify({

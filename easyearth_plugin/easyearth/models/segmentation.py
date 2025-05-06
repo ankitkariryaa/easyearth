@@ -53,7 +53,7 @@ if __name__=='__main__':
     image_path = "/home/yan/Downloads/data/DJI_0108.JPG"
     image = Image.open(image_path).convert('RGB')
     masks = segformer.get_masks(image)
-    geojson = segformer.raster_to_vector(masks, img_transform=None, filename="/tmp/masks_.geojson")
+    geojson = segformer.raster_to_vector(masks, img_transform=None, filename="/tmp/masks.geojson")
 
     import matplotlib.pyplot as plt
     plt.figure(figsize=(10,5))
