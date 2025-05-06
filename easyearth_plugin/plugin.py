@@ -2025,7 +2025,8 @@ class EasyEarthPlugin:
                            f"Predictions: {self.temp_predictions_geojson}")
 
             # Enable drawing controls
-            self.draw_button.setEnabled(True)
+            if self.is_sam_model():
+                self.draw_button.setEnabled(True)
 
             # Enable prediction (no prompts) controls
             self.predict_button.setEnabled(True)
