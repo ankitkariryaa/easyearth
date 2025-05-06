@@ -12,6 +12,7 @@ import logging
 import json
 from datetime import datetime
 import sys
+from predict_controller import verify_image_path, verify_model_path
 
 # Create logs directory in the plugin directory
 PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -19,7 +20,7 @@ LOG_DIR = os.path.join(PLUGIN_DIR, 'logs')
 os.makedirs(LOG_DIR, exist_ok=True)
 
 # Set up logging configuration
-log_file = os.path.join(LOG_DIR, f'segment_server_{datetime.now().strftime("%Y%m%d")}.log')
+log_file = os.path.join(LOG_DIR, f'segment-controller_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
 
 # Configure root logger
 logging.basicConfig(
@@ -60,7 +61,36 @@ def predict():
                 'status': 'error',
                 'message': 'image_path is required'
             }), 400
+        # Verify image path
+        else:
+            if not verify_image_path(image_path):
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Invalid image path: {image_path}'
+                }), 408
+
+        # Get model path and warmup
         model_path = data.get('model_path', 'restor/tcd-segformer-mit-b5')
+        if not model_path:
+            return jsonify({
+                'status': 'error',
+                'message': 'model_path is required'
+            }), 400
+        # Verify model path
+        else:
+            if not verify_model_path(model_path):
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Invalid model path: {model_path}'
+                }), 408
+
+        # Warmup the model
+        logger.debug(f"Warmup model: {model_path}")
+        segformer = Segmentation(model_path)
+
+        # create a random input tensor to warm up the model, shape 1024x1024x3
+        segformer.get_masks(np.zeros((1, 3, 512, 512)))  # Dummy input for warmup
+        logger.debug(f"Model warmup completed: {model_path}")
 
         # Load image with detailed error handling
         try:

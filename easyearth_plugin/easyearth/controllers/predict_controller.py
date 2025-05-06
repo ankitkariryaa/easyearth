@@ -1,6 +1,35 @@
+import os
+
+import requests
+
 from easyearth import logger
 import random
 from flask import jsonify
+
+def verify_image_path(image_path):
+    """Verify the image path and check if it is a valid URL or local file. Remember to convert the image path the path in the docker container"""
+    # TODO: to complete
+    if image_path.startswith(('http://', 'https://')):
+        # Handle URL images
+        try:
+            response = requests.get(image_path, stream=True)
+            response.raise_for_status()
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error downloading image from URL: {str(e)}")
+            return False
+    else:
+        # Handle local files
+        if os.path.isfile(image_path):
+            return True
+        else:
+            logger.error(f"Invalid image path: {image_path}")
+            return False
+
+def verify_model_path(model_path):
+    """"Verify the model path and check if it is a valid model path from hugging face"""
+    # TODO: to complete
+    raise NotImplementedError("Model path verification is not implemented yet.")
 
 
 def generate_random_predictions():
