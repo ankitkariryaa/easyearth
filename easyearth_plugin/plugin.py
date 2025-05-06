@@ -403,6 +403,9 @@ class EasyEarthPlugin:
             # Add dock widget to QGIS
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock_widget)
 
+            # initialize the data directory
+            self.data_dir = self.initialize_data_directory() # TODO: make a selection wiget for data_dir insetad
+
             # Connect to project layer changes
             QgsProject.instance().layersAdded.connect(self.update_layer_combo)
             QgsProject.instance().layersRemoved.connect(self.update_layer_combo)
@@ -891,9 +894,6 @@ class EasyEarthPlugin:
             if not self.docker_running:
                 # TODO: need to deal with the case where the docker container is initilized outside qgis, so the docker_running is actually true
                 # TODO: need to test the server status right after the docker container is finished starting
-                # Initialize_data_directory
-                self.data_dir = self.initialize_data_directory() # TODO: put in initialization function of qgis
-
                 # Verify data directory exists
                 if not self.verify_data_directory():
                     return
