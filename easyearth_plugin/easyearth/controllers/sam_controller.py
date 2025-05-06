@@ -278,7 +278,7 @@ def predict():
                 input_boxes=transformed_prompts['boxes'] if len(transformed_prompts['boxes'])>0 else None,
             )
 
-            if masks is not None:
+            if masks is None:
                 return jsonify({
                     'status': 'error',
                     'message': 'No valid masks generated'
@@ -349,4 +349,5 @@ if __name__ == "__main__":
         multimask_output=True
     )
     # to vector
-    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/home/yan/PycharmProjects/easyearth/easyearth_plugin/tmp/masks_multipoints.geojson")
+    geojson = sam.raster_to_vector(masks, scores, img_transform,
+                                   filename="/home/yan/PycharmProjects/easyearth/easyearth_plugin/tmp/masks_multipoints.geojson")
