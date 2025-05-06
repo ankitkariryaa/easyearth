@@ -340,44 +340,44 @@ def predict():
             'message': f'Server error: {str(e)}'
         }), 500
 
-
-# test reorganize_prompts
-if __name__ == "__main__":
-    # Test reorganize_prompts function
-    test_prompts = [
-        {
-            'type': 'Point',
-            'data': {
-                'points': [[850, 1100]],
-            }
-        }
-        ,
-        {
-            'type': 'Point',
-            'data': {
-                'points': [[2250, 1000]],
-            }
-        }
-    ]
-
-    transformed_prompts = reorganize_prompts(test_prompts)
-
-    from easyearth_plugin.easyearth.models.sam import Sam
-    sam = Sam()
-    image_url = "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png"
-    raw_image = Image.open(requests.get(image_url, stream=True).raw).convert("RGB")
-    img_transform = rasterio.transform.from_bounds(0, 0, 1024, 1024, 1024, 1024)
-    image_embeddings = sam.get_image_embeddings(raw_image)
-
-    # Test reproject_prompts function
-    masks, scores = sam.get_masks(
-        raw_image,
-        image_embeddings=image_embeddings,
-        input_points=transformed_prompts['points'] if len(transformed_prompts['points']) > 0 else None,
-        input_labels=transformed_prompts['labels'] if len(transformed_prompts['labels']) > 0 else None,
-        input_boxes=transformed_prompts['boxes'] if len(transformed_prompts['boxes']) > 0 else None,
-        multimask_output=True
-    )
-    # to vector
-    geojson = sam.raster_to_vector(masks, scores, img_transform,
-                                   filename="/home/yan/PycharmProjects/easyearth/easyearth_plugin/tmp/masks_multipoints.geojson")
+#
+# # test reorganize_prompts
+# if __name__ == "__main__":
+#     # Test reorganize_prompts function
+#     test_prompts = [
+#         {
+#             'type': 'Point',
+#             'data': {
+#                 'points': [[850, 1100]],
+#             }
+#         }
+#         ,
+#         {
+#             'type': 'Point',
+#             'data': {
+#                 'points': [[2250, 1000]],
+#             }
+#         }
+#     ]
+#
+#     transformed_prompts = reorganize_prompts(test_prompts)
+#
+#     from easyearth_plugin.easyearth.models.sam import Sam
+#     sam = Sam()
+#     image_url = "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png"
+#     raw_image = Image.open(requests.get(image_url, stream=True).raw).convert("RGB")
+#     img_transform = rasterio.transform.from_bounds(0, 0, 1024, 1024, 1024, 1024)
+#     image_embeddings = sam.get_image_embeddings(raw_image)
+#
+#     # Test reproject_prompts function
+#     masks, scores = sam.get_masks(
+#         raw_image,
+#         image_embeddings=image_embeddings,
+#         input_points=transformed_prompts['points'] if len(transformed_prompts['points']) > 0 else None,
+#         input_labels=transformed_prompts['labels'] if len(transformed_prompts['labels']) > 0 else None,
+#         input_boxes=transformed_prompts['boxes'] if len(transformed_prompts['boxes']) > 0 else None,
+#         multimask_output=True
+#     )
+#     # to vector
+#     geojson = sam.raster_to_vector(masks, scores, img_transform,
+#                                    filename="/home/yan/PycharmProjects/easyearth/easyearth_plugin/tmp/masks_multipoints.geojson")
