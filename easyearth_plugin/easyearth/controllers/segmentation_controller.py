@@ -80,13 +80,13 @@ def predict():
                 'status': 'error',
                 'message': 'model_path is required'
             }), 400
-        # Verify model path
-        else:
-            if not verify_model_path(model_path):
-                return jsonify({
-                    'status': 'error',
-                    'message': f'Invalid model path: {model_path}'
-                }), 408
+        # # Verify model path
+        # else:
+        #     if not verify_model_path(model_path):
+        #         return jsonify({
+        #             'status': 'error',
+        #             'message': f'Invalid model path: {model_path}'
+        #         }), 408
 
         # Warmup the model
         logger.debug(f"Warmup model: {model_path}")
