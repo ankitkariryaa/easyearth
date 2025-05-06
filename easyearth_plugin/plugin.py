@@ -282,6 +282,25 @@ class EasyEarthPlugin:
             service_group.setLayout(service_layout)
             main_layout.addWidget(service_group)
 
+            # Model Selection Group
+            model_group = QGroupBox("Segmentation Model")
+            model_layout = QHBoxLayout()
+
+            self.model_combo = QComboBox()
+            self.model_combo.setEditable(True)
+            # Add common models
+            self.model_combo.addItems([
+                "facebook/sam-vit-huge",
+                "restor/tcd-segformer-mit-b5",
+                "facebook/sam-vit-base",
+                "facebook/sam-vit-large"
+            ])
+            self.model_combo.setEditText("facebook/sam-vit-huge")  # Default
+
+            model_layout.addWidget(self.model_combo)
+            model_group.setLayout(model_layout)
+            main_layout.addWidget(model_group)
+
             # 3. Image Source Group
             image_group = QGroupBox("Image Source")
             image_layout = QVBoxLayout()
@@ -314,25 +333,6 @@ class EasyEarthPlugin:
 
             image_group.setLayout(image_layout)
             main_layout.addWidget(image_group)
-
-            # Model Selection Group
-            model_group = QGroupBox("Segmentation Model")
-            model_layout = QHBoxLayout()
-
-            self.model_combo = QComboBox()
-            self.model_combo.setEditable(True)
-            # Add common models
-            self.model_combo.addItems([
-                "facebook/sam-vit-huge",
-                "restor/tcd-segformer-mit-b5",
-                "facebook/sam-vit-base",
-                "facebook/sam-vit-large"
-            ])
-            self.model_combo.setEditText("facebook/sam-vit-huge")  # Default
-
-            model_layout.addWidget(self.model_combo)
-            model_group.setLayout(model_layout)
-            main_layout.addWidget(model_group)
 
             # 4. Embedding Settings Group
             embedding_group = QGroupBox("Embedding Settings")
