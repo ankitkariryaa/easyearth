@@ -154,6 +154,7 @@ def predict():
                 'status': 'error',
                 'message': 'image_path is required'
             }), 400
+        model_path = data.get('model_path', 'facebook/sam-vit-base')
 
         # Load image with detailed error handling
         try:
@@ -206,7 +207,7 @@ def predict():
             
             # Initialize SAM
             logger.debug("Initializing SAM model")
-            sam = Sam()
+            sam = Sam(model_path)
 
             # Handle embeddings
             embedding_path = data.get('embedding_path')

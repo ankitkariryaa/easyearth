@@ -17,14 +17,14 @@ import rasterio
 from pathlib import Path
 
 class Sam(BaseModel):
-    def __init__(self, model_version: str = "facebook/sam-vit-huge"):
+    def __init__(self, model_path: str = "facebook/sam-vit-huge"):
         """Initialize the SAM model
         Args:
-            model_version: The model version to use
+            model_path: The model to use
         """
-        super().__init__(model_version)
-        self.model = SamModel.from_pretrained(model_version).to(self.device)
-        self.processor = SamProcessor.from_pretrained(model_version)
+        super().__init__(model_path)
+        self.model = SamModel.from_pretrained(model_path).to(self.device)
+        self.processor = SamProcessor.from_pretrained(model_path)
 
     def get_metadata(self, image):
         """Get the metadata for a given image

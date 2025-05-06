@@ -60,6 +60,7 @@ def predict():
                 'status': 'error',
                 'message': 'image_path is required'
             }), 400
+        model_path = data.get('model_path', 'restor/tcd-segformer-mit-b5')
 
         # Load image with detailed error handling
         try:
@@ -108,7 +109,7 @@ def predict():
         try:
             # Initialize SAM
             logger.debug("Initializing Segmentation model")
-            segformer = Segmentation()
+            segformer = Segmentation(model_path)
 
             # Get masks
             masks = segformer.get_masks(image_array)

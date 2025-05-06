@@ -90,6 +90,9 @@ paths:
             schema:
               type: object
               properties:
+                model_path:
+                  type: string
+                  description: Path to the hugging face model (sam model)
                 image_path:
                   type: string
                   description: Path to the image
@@ -145,6 +148,9 @@ paths:
             schema:
               type: object
               properties:
+                model_path:
+                  type: string
+                  description: Path to the hugging face model (segmentation models)
                 image_path:
                   type: string
                   description: Path to the image
@@ -158,7 +164,9 @@ paths:
                         enum: ["Polygons"]
                       data:
                         type: object
-                        description: Prediction-specific data
+                        description: Prompt-specific data
+                        nullable: true
+                        example: { }
               required:
                 - image_path
       responses:
