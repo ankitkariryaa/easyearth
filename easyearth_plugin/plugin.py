@@ -1501,7 +1501,7 @@ class EasyEarthPlugin:
                 response = requests.post(
                     predict_url,
                     json=payload,
-                    timeout=600000
+                    timeout=6000000
                 )
 
                 self.logger.debug(f"Server response status: {response.status_code}")
