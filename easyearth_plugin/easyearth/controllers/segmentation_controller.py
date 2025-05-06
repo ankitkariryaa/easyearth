@@ -60,11 +60,6 @@ def predict():
                 'status': 'error',
                 'message': 'image_path is required'
             }), 400
-        if not os.path.exists(image_path):
-            return jsonify({
-                'status': 'error',
-                'message': f'Image file not found at path: {image_path}.'
-            }), 404
 
         # Load image with detailed error handling
         try:
@@ -110,10 +105,7 @@ def predict():
                 'message': f'Failed to load image: {str(e)}'
             }), 500
 
-        # Process prompts
         try:
-            prompts = data.get('prompts', [])
-            
             # Initialize SAM
             logger.debug("Initializing Segmentation model")
             segformer = Segmentation()
