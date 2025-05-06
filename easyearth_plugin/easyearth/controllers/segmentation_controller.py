@@ -12,7 +12,11 @@ import logging
 import json
 from datetime import datetime
 import sys
-from predict_controller import verify_image_path, verify_model_path
+try:
+    from .predict_controller import verify_image_path, verify_model_path
+except ImportError:
+    # For direct script execution
+    from predict_controller import verify_image_path, verify_model_path
 
 # Create logs directory in the plugin directory
 PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
