@@ -1,7 +1,13 @@
 # Easy Earth project with Flask, Connexion and OpenApi 3
 
 
-EasyEarth - QGIS plugin powered by huggingface, Flask and Connexion
+EasyEarth - QGIS plugin powered by huggingface, Flask and Connexion 
+
+Check the demo [here](https://drive.google.com/file/d/1AShHsXkYoBj4zltAGkdnzEfKp2GSFFeS/view)
+
+
+![image](https://github.com/user-attachments/assets/1447e21f-6cb2-4917-8d06-ba9960b78d87)
+
 
 ```http
 https://github.com/zalando/connexion
@@ -61,29 +67,23 @@ http://localhost:3781/v1/easyearth/swagger.json  # TODO: not working yet...
 
 ## Health Check
 
-Check if the server is running, the response should be `Server is alive`
+```bash
+cd easyearth_plugin  # go to the directory where docker-compose.yml is located
+sudo docker-compose build  # build the container, can be skipped if already built
+sudo docker-compose up  # start the container
 ```
+
+Check if the server is running, the response should be `Server is alive`
+```bash
 curl -X GET http://127.0.0.1:3781/v1/easyearth/ping'
 
 ```
 
-Check if the prediction endpoint is working, 
-```
-curl -X POST http://127.0.0.1:3781/v1/easyearth/predict -H "Content-Type: application/json" -d '{
-  "image_path": "/path/to/image.jpg",
-  "embedding_path": "/path/to/embedding.bin",
-  "prompts": [
-    {"type": "Point", "data": {"x": 50, "y": 50}},
-    {"type": "Text", "data": {"text": "Example text"}}
-  ]
-}'
-
-```
-
-Test predictions with SAM model
-```
+Test predictions with prompts using SAM model
+```bash
 curl -X POST http://127.0.0.1:3781/v1/easyearth/sam-predict -H "Content-Type: application/json" -d '{
-  "image_path": "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png",
+  "image_path": "/usr/src/app/user/DJI_0108.JPG",
+  "embedding_path": "/usr/src/app/user/embeddings/DJI_0108.pt",
   "prompts": [
     {
       "type": "Point",
@@ -91,9 +91,19 @@ curl -X POST http://127.0.0.1:3781/v1/easyearth/sam-predict -H "Content-Type: ap
         "points": [[850, 1100]],
         "labels": [1]
       }
-    }
-  ]
+    }  
+                      
+  ]            
 }'
+
+```
+Test predictions with no prompts using other segmentation models
+```bash
+curl -X POST http://127.0.0.1:3781/v1/easyearth/segment-predict -H "Content-Type: application/json" -d '{
+  "image_path": "/usr/src/app/user/DJI_0108.JPG",
+  "prompts": []            
+}'
+
 
 ```
 
