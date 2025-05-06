@@ -1,8 +1,6 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 import numpy as np
 import rasterio
-import pyproj
 import torch  # Add this for CRS transformation
 from easyearth.models.sam import Sam
 from PIL import Image
@@ -47,14 +45,14 @@ logger.debug("Debug message test")
 logger.info("Info message test")
 logger.warning("Warning message test")
 
-def reorgnize_prompts(prompts):
+def reorganize_prompts(prompts):
     """
     Reorganize prompts into a dictionary with separate lists for points, labels, boxes, and text
 
     Args:
         prompts (list): List of prompt dictionaries
     Returns:
-        transformed_prompts (dict): Dictionary with separate lists for points, labels, boxes, and text
+        transformed_prompts (dict): Dictionary with separate lists for points, labels, boxes, and text, each object with the dimension of (batch, number of objectsm, dimention of each object) with the batch dimention as 1
     """
 
     transformed_prompts = {
@@ -69,15 +67,22 @@ def reorgnize_prompts(prompts):
         prompt_data = prompt.get('data', {})
         if prompt_type == 'Point':
             transformed_prompts['points'].append(prompt_data.get('points', []))
-            transformed_prompts['labels'].append(prompt_data.get('labels', []))
+            transformed_prompts['labels'].extend(prompt_data.get('labels', []))
         elif prompt_type == 'Box':
-            transformed_prompts['boxes'].append(prompt_data.get('boxes', []))
+            transformed_prompts['boxes'].extend(prompt_data.get('boxes', []))
         elif prompt_type == 'Text':
-            transformed_prompts['text'].append(prompt_data.get('text', []))
+            transformed_prompts['text'].extend(prompt_data.get('text', []))
+
+    for key in ['points', 'labels', 'boxes', 'text']:
+        if len(transformed_prompts[key]) > 0:
+            transformed_prompts[key] = [transformed_prompts[key]]
+    if len(transformed_prompts['points']) > 0:
+        if np.array(transformed_prompts['points']).shape[1] == 1:
+            transformed_prompts['points'] = transformed_prompts['points'][0]
 
     return transformed_prompts
 
-
+# TODO: add this to the predict function
 def reproject_prompts(prompts, transform, image_shape):
     """
     Transform all types of prompts from map coordinates to pixel coordinates
@@ -149,11 +154,6 @@ def predict():
                 'status': 'error',
                 'message': 'image_path is required'
             }), 400
-        if not os.path.exists(image_path):
-            return jsonify({
-                'status': 'error',
-                'message': f'Image file not found at path: {image_path}.'
-            }), 404
 
         # Load image with detailed error handling
         try:
@@ -202,7 +202,7 @@ def predict():
         # Process prompts
         try:
             prompts = data.get('prompts', [])
-            transformed_prompts = reorgnize_prompts(prompts)
+            transformed_prompts = reorganize_prompts(prompts)
             
             # Initialize SAM
             logger.debug("Initializing SAM model")
@@ -273,12 +273,12 @@ def predict():
             masks, scores = sam.get_masks(
                 image_array,
                 image_embeddings=image_embeddings,
-                input_points=transformed_prompts['points'] if transformed_prompts['points'] else None,
-                input_labels=transformed_prompts['labels'] if transformed_prompts['labels'] else None,
-                input_boxes=transformed_prompts['boxes'] if transformed_prompts['boxes'] else None,
+                input_points=transformed_prompts['points'] if len(transformed_prompts['points'])>0 else None,
+                input_labels=transformed_prompts['labels'] if len(transformed_prompts['labels'])>0 else None,
+                input_boxes=transformed_prompts['boxes'] if len(transformed_prompts['boxes'])>0 else None,
             )
 
-            if masks is None:
+            if masks is not None:
                 return jsonify({
                     'status': 'error',
                     'message': 'No valid masks generated'
@@ -289,7 +289,7 @@ def predict():
                 masks,
                 scores,
                 transform,
-                filename=f"{PLUGIN_DIR}/tmp/predictions_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
+                filename=f"{PLUGIN_DIR}/tmp/predict-sam_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
             )
 
             return jsonify({
@@ -309,3 +309,44 @@ def predict():
             'status': 'error',
             'message': f'Server error: {str(e)}'
         }), 500
+
+
+# test reorganize_prompts
+if __name__ == "__main__":
+    # Test reorganize_prompts function
+    test_prompts = [
+        {
+            'type': 'Point',
+            'data': {
+                'points': [[850, 1100]],
+            }
+        }
+        ,
+        {
+            'type': 'Point',
+            'data': {
+                'points': [[2250, 1000]],
+            }
+        }
+    ]
+
+    transformed_prompts = reorganize_prompts(test_prompts)
+
+    from easyearth_plugin.easyearth.models.sam import Sam
+    sam = Sam()
+    image_url = "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png"
+    raw_image = Image.open(requests.get(image_url, stream=True).raw).convert("RGB")
+    img_transform = rasterio.transform.from_bounds(0, 0, 1024, 1024, 1024, 1024)
+    image_embeddings = sam.get_image_embeddings(raw_image)
+
+    # Test reproject_prompts function
+    masks, scores = sam.get_masks(
+        raw_image,
+        image_embeddings=image_embeddings,
+        input_points=transformed_prompts['points'] if len(transformed_prompts['points']) > 0 else None,
+        input_labels=transformed_prompts['labels'] if len(transformed_prompts['labels']) > 0 else None,
+        input_boxes=transformed_prompts['boxes'] if len(transformed_prompts['boxes']) > 0 else None,
+        multimask_output=True
+    )
+    # to vector
+    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/home/yan/PycharmProjects/easyearth/easyearth_plugin/tmp/masks_multipoints.geojson")

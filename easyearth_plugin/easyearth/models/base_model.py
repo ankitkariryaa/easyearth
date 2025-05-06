@@ -106,19 +106,29 @@ class BaseModel:
 
 
     def raster_to_vector(self, 
-                        masks: Union[torch.Tensor, np.ndarray], 
+                        masks: Union[List[np.ndarray], List[torch.Tensor]],
                         img_transform: Optional[Any] = None, 
                         filename: Optional[str] = None) -> List[Dict]:
         """Converts a raster mask to a vector mask
         Args:
-            masks: The raster mask
+            masks: predictions from the segmentation model in hugging face format
             img_transform: Optional transform for georeferencing
             filename: Optional filename (including directory path) to save GeoJSON
         Returns: 
             List of GeoJSON features
         """
-        
+
+        # TODO: need to test if this works for prediction for an entire image (segmentation.py)
         masks = masks[0]
+
+        # convert tensor to numpy array
+        if isinstance(masks, torch.Tensor):
+            masks = masks.cpu().numpy()
+            masks = (masks > 0).astype(np.uint8)
+
+        # squeeze the masks to remove singleton dimensions
+        if masks.ndim > 2:
+            masks = np.squeeze(masks, axis=0)
 
         if img_transform is not None:
             shape_generator = features.shapes(
@@ -145,5 +155,8 @@ class BaseModel:
         return geojson
 
     def get_masks(self, image: Union[str, Path, Image.Image, np.array]):
-        """Get masks for input image - to be implemented by child classes"""
+        """Get masks for input image - to be implemented by child classes
+        Args:
+            image: The input image
+        """
         raise NotImplementedError

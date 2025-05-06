@@ -49,7 +49,7 @@ class Sam:
         image_embeddings = model.get_image_embeddings(inputs["pixel_values"])
         return image_embeddings
 
-    def get_masks(self, model, raw_image, processor, image_embeddings, input_points=None, input_boxes=None, input_labels=None):
+    def get_masks(self, model, raw_image, processor, image_embeddings, input_points=None, input_boxes=None, input_labels=None, multimask_output=True):
         """Get the masks for a given prompt
         Args:
             model: The model to use
@@ -66,7 +66,7 @@ class Sam:
         inputs.update({"image_embeddings": image_embeddings})
 
         with torch.no_grad():
-            outputs = model(**inputs)
+            outputs = model(**inputs, multimask_output=multimask_output)  # TODO: so maybe at the moment do not allow hollow masks where it requires multimask_output=True...
 
         masks = processor.image_processor.post_process_masks(outputs.pred_masks.cpu(), inputs["original_sizes"].cpu(), inputs["reshaped_input_sizes"].cpu())
         scores = outputs.iou_scores.cpu()
@@ -79,24 +79,45 @@ class Sam:
         Returns: The vector mask
         """
 
-        masks = masks[0]
+        num_masks = masks[0].shape[0]
+        num_scores = masks[0].shape[1]
 
-        # Get the index of the mask with the highest iou score
-        highes_score_idx = torch.argmax(scores, dim=2)
-        assert highes_score_idx.shape[-1] == masks.shape[0]
+        # get the object id for each mask
+        objects_id = torch.arange(num_masks).view(-1, 1, 1, 1).expand_as(
+            masks[0])  # the first dimension is the object id
+        masks_id = torch.where(masks[0], objects_id + 1, torch.tensor(
+            0))  # the second dimension is the mask id, one object may have multiple predicted masks with different confidence scores
 
-        # Change boolean to index id of the first dimension of a tensor that represents the id of each object mask
-        depth_ids = torch.arange(masks.size(0)).view(-1, 1, 1, 1).expand_as(masks)
-        masks_id = torch.where(masks, depth_ids+1, torch.tensor(0))
+        # if multimask_output is True, then we have multiple masks for each object with different scores, then we choose the one with the highest score
+        if num_scores > 1:
+            # TODO: verity if this is correct
+            # Get the index of the mask with the highest iou score
+            highes_score_idx = torch.argmax(scores, dim=2)
+            assert highes_score_idx.shape[-1] == masks[0].shape[0]
 
-        # Get the mask with the highest score
-        masks_list = []
-        for x, y in enumerate(highes_score_idx):
-            masks_list.append(masks_id[x, y, :, :])
-        masks_highest = torch.stack(masks_list, dim=0)
-        masks_combined = torch.amax(masks_highest, dim=0, keepdim=False).numpy().astype(np.uint8)
-        assert masks_combined.sum() > 0 # check if there are any masks  # TODO: the second and third mask may not be empty even with no prompts, why?
-        
+            # Get the mask with the highest score
+            masks_list = []
+            for obj, sco in enumerate(highes_score_idx[0].tolist()):
+                masks_list.append(masks_id[obj, sco, :, :])
+            masks_highest = torch.stack(masks_list, dim=0)
+
+            # Convert to the dimensions suitable for super().raster_to_vector
+            masks_combined = masks_highest
+        else:
+            # Convert to the dimensions suitable for super().raster_to_vector
+            masks_combined = masks_id.squeeze(1)
+
+        # TODO: is there a better way? this will cause potential problems for overlapping predictions -> for now, the latter prediction will overwrite the former...
+        # reduce the dimensions of the masks to 2D by choosing the largest value
+        if len(masks_combined.shape) > 2:
+            masks_combined = np.max(masks_combined, axis=0)
+
+        # convert tensor to numpy array
+        if isinstance(masks_combined, torch.Tensor):
+            masks_combined = masks_combined.cpu().numpy()
+        # convert to uint8
+        masks_combined = (masks_combined > 0).astype(np.uint8)
+
         if img_transform is not None:
             shape_generator = features.shapes(
                 masks_combined,
@@ -128,10 +149,11 @@ if __name__ == "__main__":
     raw_image = Image.open(requests.get(image_url, stream=True).raw).convert("RGB")
     img_transform = rasterio.transform.from_bounds(0, 0, 1024, 1024, 1024, 1024)
 
-    input_points = [[[820, 1080]]]
+    input_points = [[[850, 1100], [2250, 1000]]]
     input_boxes = [[[650, 900, 1000, 1250]]]
     multiple_boxes = [[[620, 900, 1000, 1255], [2050, 800, 2400, 1150]]]
     input_labels = [[0]]
+    multiple_points = [[[[850, 1100]], [[2250, 1000]]]] # one mask for each point
 
     sam = Sam()
     image_embeddings = sam.get_image_embeddings(sam.model, sam.processor, raw_image)
@@ -142,6 +164,9 @@ if __name__ == "__main__":
     # Single points
     masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_points=input_points)
     geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_point.geojson")
+    # Multiple points, and one point one (set of) mask
+    masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_points=multiple_points)
+    geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_multipoint.geojson")
     # Single bounding box
     masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_boxes=input_boxes)
     geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_bbox.geojson")
