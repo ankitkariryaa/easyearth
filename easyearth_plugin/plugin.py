@@ -269,8 +269,9 @@ class EasyEarthPlugin:
             api_label = QLabel("API Endpoints:")
             api_label.setStyleSheet("font-weight: bold;")
             self.api_info = QLabel(f"Base URL: http://0.0.0.0:{self.server_port}/v1/easyearth\n"
-                                  f"Predict: /sam-predict\n"
-                                  f"Health: /ping")
+                                  f"Infer with point or box prompts: /sam-predict\n"
+                                  f"Infer with no prompts: /segment-predict\n"
+                                  f"Health check: /ping")
             self.api_info.setWordWrap(True)
             api_layout.addWidget(api_label)
             api_layout.addWidget(self.api_info)
@@ -377,15 +378,21 @@ class EasyEarthPlugin:
             settings_group.setLayout(settings_layout)
             main_layout.addWidget(settings_group)
 
-            # TODO: add functions to allow predicting for multiple prompts...
-            # # Prediction Group
-            # predict_group = QGroupBox("Prediction")
-            # predict_layout = QVBoxLayout()
-            # self.predict_button = QPushButton("Get Prediction")
-            # self.predict_button.clicked.connect(self.get_prediction)
-            # predict_layout.addWidget(self.predict_button)
-            # predict_group.setLayout(predict_layout)
-            # main_layout.addWidget(predict_group)
+            # 6. Prediction Button Group
+            predict_group = QGroupBox("Prediction")
+            predict_layout = QVBoxLayout()
+            self.predict_button = QPushButton("Get Inference")
+            self.predict_button.clicked.connect(self.on_predict_button_clicked)
+            self.predict_button.setEnabled(False)  # Enable after image is loaded
+            predict_layout.addWidget(self.predict_button)
+            predict_group.setLayout(predict_layout)
+            main_layout.addWidget(predict_group)
+
+            # Real-time vs Batch Prediction Option
+            self.realtime_checkbox = QCheckBox("Get inference in real time while drawing")
+            self.realtime_checkbox.setChecked(False)  # Default to real-time
+            settings_layout.addWidget(self.realtime_checkbox)
+            self.realtime_checkbox.stateChanged.connect(self.on_realtime_checkbox_changed)
 
             # Set the main layout
             main_widget.setLayout(main_layout)
@@ -411,6 +418,12 @@ class EasyEarthPlugin:
         except Exception as e:
             self.logger.error(f"Error in initGui: {str(e)}")
             self.logger.exception("Full traceback:")
+
+    def on_realtime_checkbox_changed(self, state):
+        """
+        Enable or disable the prediction button based on real-time mode.
+        """
+        self.predict_button.setEnabled(not self.realtime_checkbox.isChecked())
 
     def update_layer_combo(self):
         """Update the layers combo box with current raster layers"""
@@ -1209,10 +1222,10 @@ class EasyEarthPlugin:
                         "labels": [1]
                     }
                 }]
-                
-                # Get prediction
-                self.get_prediction(prompt)
-                
+
+                if self.realtime_checkbox.isChecked():
+                    self.get_prediction(prompt)
+
             elif draw_type == "Box":
                 if not self.start_point:
                     # Start drawing box
@@ -1268,10 +1281,11 @@ class EasyEarthPlugin:
                             ]]
                         }
                     }]
-                    
-                    # Get prediction
-                    self.get_prediction(prompt)
-                    
+
+                    if self.realtime_checkbox.isChecked():
+                        # Get prediction
+                        self.get_prediction(prompt)
+
                     # Reset for next box
                     self.temp_rubber_band.reset()
                     self.start_point = None
@@ -1291,6 +1305,38 @@ class EasyEarthPlugin:
             QgsPointXY(start.x(), start.y())
         ]
         return QgsGeometry.fromPolygonXY([points])
+
+    def collect_all_prompts(self):
+        """Collect all prompts from the prompts layer.
+        Returns:
+            list of dicts with prompt data
+        """
+        prompts = []
+
+        # TODO: if this, one cannot add on the go and then run predictions on multiple prompts.. unless this is down only on the new prompts added after unchecking prediction on the go
+        if self.prompts_layer:
+            for feature in self.prompts_layer.getFeatures():
+                prompt_type = feature['type']
+                geom = feature.geometry()
+                if prompt_type == 'Point':
+                    pt = geom.asPoint()
+                    prompts.append({'type': 'Point', 'data': {'points': [[pt.x(), pt.y()]]}}) # TODO: figure out labels for points, when used together with bounding boxes to remove part of the prediction masks
+                elif prompt_type == 'Box':
+                    poly = geom.asPolygon()
+                    prompts.append({'type': 'Box', 'data': {'boxes': [[poly[0][0].x(), poly[0][0].y(), poly[0][2].x(), poly[0][2].y()]]}})
+                else:
+                    self.logger.error(f"Unknown prompt type: {prompt_type}")
+                    raise ValueError(f"Unknown prompt type: {prompt_type}")
+        return prompts
+
+    def on_predict_button_clicked(self):
+        """Run prediction: batch if prompts exist, else no-prompts prediction."""
+        try:
+            prompts = self.collect_all_prompts()  # Implement this to gather all drawn prompts
+            self.get_prediction(prompts)
+        except Exception as e:
+            self.logger.error(f"Error running prediction: {str(e)}")
+            QMessageBox.critical(None, "Error", f"Failed to run prediction: {str(e)}")
 
     def get_prediction(self, prompts):
         """Get prediction from SAM server and add to predictions layer"""
@@ -1360,22 +1406,20 @@ class EasyEarthPlugin:
             }
 
             # Show payload in message bar
-            formatted_payload = (
-                f"Sending to server:\n"
-                f"- Host image path: {image_path}\n"
-                f"- Prompt type: {prompts[0]['type']}\n"
-            )
-            
-            if prompts[0]['type'] == 'Point':
-                points = prompts[0]['data']['points']
-                formatted_payload += f"- Points: {points}\n"
-                formatted_payload += f"- Labels: {prompts[0]['data']['labels']}"
-            elif prompts[0]['type'] == 'Box':
-                boxes = prompts[0]['data']['boxes']
-                formatted_payload += f"- Box coordinates: {boxes}"
+            # Use:
+            if prompts is None or len(prompts) == 0:
+                formatted_payload = "No prompts: running full image prediction\n"
+            else:
+                # print prompts to the logger
+                self.logger.debug(f"Prompts: {json.dumps(prompts, indent=2)}")
+                formatted_payload = (
+                    f"Sending to server:\n"
+                    f"- Host image path: {image_path}\n"
+                    f"- Prompts: {json.dumps(prompts, indent=2)}\n"
+                )
 
             self.iface.messageBar().pushMessage(
-                "Server Request", 
+                "Server Request",
                 formatted_payload,
                 level=Qgis.Info,
                 duration=5
@@ -1383,8 +1427,15 @@ class EasyEarthPlugin:
 
             # Send request to SAM server
             try:
+                if prompts is None or len(prompts) == 0:
+                    # No prompts, run full image prediction
+                    predict_url = f"{self.server_url}/segment-predict"
+                else:
+                    # With prompts, run prompt-based prediction
+                    predict_url = f"{self.server_url}/sam-predict"
+
                 response = requests.post(
-                    f"{self.server_url}/sam-predict",
+                    predict_url,
                     json=payload,
                     timeout=60000
                 )
@@ -1983,7 +2034,10 @@ class EasyEarthPlugin:
 
             # Enable drawing controls
             self.draw_button.setEnabled(True)
-            
+
+            # Enable prediction (no prompts) controls
+            self.predict_button.setEnabled(True)
+
             self.iface.messageBar().pushMessage(
                 "Success", 
                 "Ready for drawing prompts and predictions",
