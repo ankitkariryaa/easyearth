@@ -296,6 +296,7 @@ class EasyEarthPlugin:
                 "facebook/sam-vit-large"
             ])
             self.model_combo.setEditText("facebook/sam-vit-huge")  # Default
+            self.model_combo.currentTextChanged.connect(self.update_drawing_enabled)
 
             model_layout.addWidget(self.model_combo)
             model_group.setLayout(model_layout)
@@ -465,6 +466,22 @@ class EasyEarthPlugin:
 
         except Exception as e:
             self.logger.error(f"Error updating layer combo: {str(e)}")
+
+    def update_drawing_enabled(self):
+        """Enable drawing and embedding only if a SAM model is selected."""
+        model_path = self.model_combo.currentText().strip()
+        is_sam = model_path.startswith("facebook/sam-")
+        # Drawing section
+        self.draw_button.setEnabled(is_sam)
+        self.draw_type_combo.setEnabled(is_sam)
+        # Embedding section
+        self.no_embedding_radio.setEnabled(is_sam)
+        self.load_embedding_radio.setEnabled(is_sam)
+        self.save_embedding_radio.setEnabled(is_sam)
+        self.embedding_path_edit.setEnabled(is_sam and not self.no_embedding_radio.isChecked())
+        self.embedding_browse_btn.setEnabled(is_sam and not self.no_embedding_radio.isChecked())
+        if not is_sam and self.draw_button.isChecked():
+            self.draw_button.setChecked(False)
 
     def on_image_source_changed(self, text):
         """Handle image source selection change"""
