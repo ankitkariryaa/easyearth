@@ -43,7 +43,8 @@ class Segmentation(BaseModel):
         with torch.no_grad():
             inputs = self.processor(raw_image, return_tensors='pt')
             preds = self.model(pixel_values=inputs.pixel_values)
-            masks = self.processor.post_process_semantic_segmentation(preds.cpu(), target_sizes=[raw_image.size[:2]])
+            target_size = [(raw_image.size[1], raw_image.size[0])]
+            masks = self.processor.post_process_semantic_segmentation(preds, target_sizes=target_size)
         return masks
     
 

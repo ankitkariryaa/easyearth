@@ -123,6 +123,7 @@ class BaseModel:
 
         # convert tensor to numpy array
         if isinstance(masks, torch.Tensor):
+            self.logger.debug(masks.shape)
             masks = masks.cpu().numpy()
             masks = (masks > 0).astype(np.uint8)
 
