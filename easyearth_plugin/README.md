@@ -13,6 +13,15 @@ Check the demo [here](https://drive.google.com/file/d/1AShHsXkYoBj4zltAGkdnzEfKp
 https://github.com/zalando/connexion
 ```
 
+## Folder structure
+```
+easyearth
+├── easyearth  -> server app
+├── easyearth_plugin  -> qgis plugin
+│   ├── easyearth  -> server app
+│   ├── ...
+```
+
 ## Requirements
 
 * Docker Compose 1.21.2+ (see https://docs.docker.com/compose/install/)
@@ -27,87 +36,81 @@ sudo apt update
 sudo apt install docker-compose
 ```
 
+## Download the code and only need the easyearth_plugin folder
+```bash
+# go to your download directory
+cd ~/Downloads
+git clone https://github.com/YanCheng-go/easyearth.git
+cp -r ./easyearth/easyearth_plugin easyearth_plugin
+```
+
+## Build the container
+
+```bash
+cd easyearth_plugin  # go to the directory where docker-compose.yml is located
+sudo docker-compose build  # build the container
+```
+
 ## Install easyearth plugin on qgis
 1. Open QGIS, click Settings -> User profiles -> Open Active Profile Folder -> python -> plugins
 2. Copy easyearth_plugin folder to "plugins"
 3. Reopen QGIS, click Plugins -> Manage and Install Plugins -> Installed -> click the check box before EasyEarth
 
-## Run EasyEarth
-1. Click Start Docker
+## Run EasyEarth in QGIS
+1. Click Start Docker or in the terminal run `sudo docker-compose up` to start the container
+    ```bash
+    cd easyearth_plugin  # go to the directory where docker-compose.yml is located
+    # sudo docker-compose build  # build the container, can be skipped if already built
+    sudo docker-compose up  # start the container
+    ```
 2. Click Browse image and select an image to play with 
 3. Click Start Drawing.
 
-
----------- Documentation during development --------------
-## Run with Docker Compose in the project root directory
-
+## Run EasyEarth outside of QGIS
+Start the docker container and send requests to the server using curl or any other HTTP client.
 ```bash
-# building the container
-cd /path/to/easyearth
-sudo docker-compose build
-
-# starting up a container
-sudo docker-compose up
-```
-
-## Build the virtual environment
-
-```bash
-virtualenv -p /usr/bin/python3.6 venv
-source venv/bin/activate
-pip3 install -r requirements.txt
-pip3 install -r test-requirements.txt
-```
-
-## Swagger definition
-
-```http
-http://localhost:3781/v1/easyearth/swagger.json  # TODO: not working yet...
-```
-
-## Health Check
-
-```bash
-cd easyearth_plugin  # go to the directory where docker-compose.yml is located
-sudo docker-compose build  # build the container, can be skipped if already built
+cd easyearth_plugin  # go to the directory where the repo is located
+# sudo docker-compose build  # build the container, can be skipped if already built
 sudo docker-compose up  # start the container
 ```
 
+### Health Check
 Check if the server is running, the response should be `Server is alive`
 ```bash
 curl -X GET http://127.0.0.1:3781/v1/easyearth/ping'
-
 ```
-
-Test predictions with prompts using SAM model
+### Use SAM with prompts
+Send prompts to the server and get predictions from SAM model. Check the generated geojson in easyearth_plugin/user/tmp/...
 ```bash
 curl -X POST http://127.0.0.1:3781/v1/easyearth/sam-predict -H "Content-Type: application/json" -d '{
   "image_path": "/usr/src/app/user/DJI_0108.JPG",
-  "embedding_path": "/usr/src/app/user/embeddings/DJI_0108.pt",
+  "embedding_path": "/usr/src/app/user/embeddings/DJI_0108.pt",  # if empty, the code will generate embeddings first
   "prompts": [
     {
       "type": "Point",
       "data": {
         "points": [[850, 1100]],
-        "labels": [1]
       }
     }  
                       
   ]            
 }'
-
 ```
-Test predictions with no prompts using other segmentation models
+### Use models with no prompts
+Call other segmentation models with out prompt engineering
 ```bash
 curl -X POST http://127.0.0.1:3781/v1/easyearth/segment-predict -H "Content-Type: application/json" -d '{
   "image_path": "/usr/src/app/user/DJI_0108.JPG",
-  "prompts": []            
+  "prompts": []
 }'
-
-
 ```
 
-## Launch tests
+### Swagger definition
+```http
+http://localhost:3781/v1/easyearth/swagger.json  # TODO: not working yet...
+```
+
+## Launch tests  # TODO: to add
 
 ```bash
 source venv/bin/activate
