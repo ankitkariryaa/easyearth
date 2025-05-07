@@ -59,13 +59,13 @@ def predict():
         #             'message': f'Invalid model path: {model_path}'
         #         }), 408
 
-        # Warmup the model
-        logger.debug(f"Warmup model: {model_path}")
-        segformer = Segmentation(model_path)
-
-        # create a random input tensor to warm up the model, shape 1024x1024x3
-        segformer.get_masks(np.zeros((1, 3, 512, 512)))  # Dummy input for warmup
-        logger.debug(f"Model warmup completed: {model_path}")
+        # # Warmup the model
+        # segformer = Segmentation(model_path)
+        # logger.debug("Warming up model")
+        #
+        # # create a random input tensor to warm up the model, shape 1024x1024x3
+        # segformer.get_masks(np.zeros((1, 3, 512, 512)))  # Dummy input for warmup
+        # logger.debug(f"Model warmup completed: {model_path}")
 
         # Load image with detailed error handling
         try:
