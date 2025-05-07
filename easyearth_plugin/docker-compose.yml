@@ -2,6 +2,7 @@ version: '3.8'   # More recent features
 
 services:
   easyearth-server:
+    image: easyearth_plugin_easyearth-server:latest
     build:
       context: .
       dockerfile: Dockerfile

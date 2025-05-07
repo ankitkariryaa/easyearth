@@ -39,7 +39,7 @@ sudo apt install docker-compose
 ## Download the code and only need the easyearth_plugin folder
 ```bash
 # go to your download directory
-cd ~/Downloads
+cd ~/Downloads  # Specify your own path where you want to download the code
 git clone https://github.com/YanCheng-go/easyearth.git
 cp -r ./easyearth/easyearth_plugin easyearth_plugin
 ```
