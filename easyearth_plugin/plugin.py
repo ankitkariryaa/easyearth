@@ -1962,7 +1962,7 @@ class EasyEarthPlugin:
                     None,
                     "Data Directory Set",
                     f"Data directory has been set to:\n{data_dir}\n\n"
-                    f"Temporary directory has been set to:\n{tmp_dir}\n\n"
+                    f"Temporary directory has been set to:\n{self.tmp_dir}\n\n"
                     "Please make sure to:\n"
                     "1. Place your input images in this directory\n"
                     "2. Ensure Docker has access to this location\n"
