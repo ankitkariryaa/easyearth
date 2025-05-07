@@ -27,7 +27,6 @@ class Segmentation(BaseModel):
         self.semantic_segmentation = pipeline("image-segmentation", model_path)
         self.config = SegformerConfig.from_pretrained(model_path)
 
-
     def get_masks(self, image: Union[str, Path, Image.Image, np.ndarray]):
         """Get the masks for a given prompt
         Args:
@@ -35,6 +34,8 @@ class Segmentation(BaseModel):
         Returns: 
             masks
         """
+
+        self.logger.debug(f"Processing image: {image}")
         if isinstance(image, str) or isinstance(image, Path):
             raw_image = Image.open(image).convert("RGB")
         else:

@@ -120,10 +120,11 @@ class BaseModel:
 
         # TODO: need to test if this works for prediction for an entire image (segmentation.py)
         masks = masks[0]
+        self.logger.debug(f"masks: {masks}")
 
         # convert tensor to numpy array
         if isinstance(masks, torch.Tensor):
-            self.logger.debug(masks.shape)
+            self.logger.debug(f"masks shape: {masks.shape}")
             masks = masks.cpu().numpy()
             masks = (masks > 0).astype(np.uint8)
 
