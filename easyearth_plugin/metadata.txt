@@ -3,8 +3,8 @@ name=EasyEarth
 description=Apply vision models from hugging face for a given prompts created on QGIS canvas
 version=1.0
 qgisMinimumVersion=3.0
-author=Ankit Kariryaa, Yan Cheng
-email=ankit.ky@gmail.com, chengyan2017@gmail.com
+author=Yan Cheng, Ankit Kariryaa
+email=chengyan2017@gmail.com, ankit.ky@gmail.com
 
 about=This plugin integrates the Segment Anything Model with QGIS for image segmentation.
 
