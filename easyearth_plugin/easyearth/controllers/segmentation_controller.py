@@ -1,9 +1,6 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask import request, jsonify
 import numpy as np
 import rasterio
-import pyproj
-import torch  # Add this for CRS transformation
 from easyearth.models.segmentation import Segmentation
 from PIL import Image
 import requests
@@ -13,47 +10,17 @@ import json
 from datetime import datetime
 import sys
 try:
-    from .predict_controller import verify_image_path, verify_model_path
+    from .predict_controller import verify_image_path, verify_model_path, setup_logging
 except ImportError:
     # For direct script execution
-    from predict_controller import verify_image_path, verify_model_path
-
-# Create logs directory in the plugin directory
-PLUGIN_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-LOG_DIR = os.path.join(PLUGIN_DIR, 'logs')
-os.makedirs(LOG_DIR, exist_ok=True)
-
-# Set up logging configuration
-log_file = os.path.join(LOG_DIR, f'segment-controller_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
-
-# Configure root logger
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_file, mode='a'),  # 'a' for append mode
-        logging.StreamHandler(sys.stdout)  # This will print to Docker logs
-    ]
-)
-
-# Get logger for this module
-logger = logging.getLogger(__name__)
-
-# Log some initial information
-logger.info(f"=== Server Starting ===")
-logger.info(f"Plugin directory: {PLUGIN_DIR}")
-logger.info(f"Log directory: {LOG_DIR}")
-logger.info(f"Log file: {log_file}")
-logger.info(f"Current working directory: {os.getcwd()}")
-logger.info(f"Python path: {sys.path}")
-
-# Test logging
-logger.debug("Debug message test")
-logger.info("Info message test")
-logger.warning("Warning message test")
+    from predict_controller import verify_image_path, verify_model_path, setup_logging
 
 def predict():
     """Handle prediction request for segmentation models from hugging face."""
+    # Set up logging
+    logger = setup_logging(name="segment-controller")
+    logger.debug("Starting Segmentation prediction")
+
     try:
         # Get the image data from the request
         data = request.get_json()
