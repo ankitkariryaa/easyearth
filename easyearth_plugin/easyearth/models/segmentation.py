@@ -23,9 +23,13 @@ class Segmentation(BaseModel):
         """
         super().__init__(model_path)
         self.processor = AutoImageProcessor.from_pretrained(model_path)
+        self.logger.debug(f"Loading model from {model_path}")
         self.model = AutoModelForSemanticSegmentation.from_pretrained(model_path)
+        self.logger.debug(f"Model loaded successfully")
         self.semantic_segmentation = pipeline("image-segmentation", model_path)
+        self.logger.debug(f"Pipeline created successfully")
         self.config = SegformerConfig.from_pretrained(model_path)
+        self.logger.debug(f"Model config loaded successfully")
 
     def get_masks(self, image: Union[str, Path, Image.Image, np.ndarray]):
         """Get the masks for a given prompt
