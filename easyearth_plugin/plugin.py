@@ -894,11 +894,39 @@ class EasyEarthPlugin:
             self.logger.error(f"Error checking Docker status: {str(e)}")
             return False
 
+    # TODO: better error handling
+    def check_mounted_data_dir(self, container_id):
+        """Check data directory that is mounted to the docker container started outside QGIS"""
+        try:
+            # Check the mounted data directory
+            cmd = f'echo "{self.sudo_password}" | sudo docker inspect -f "{{{{ .Mounts }}}}" {container_id}'
+            result = self.run_sudo_command(cmd)
+            if not result or result.returncode != 0:
+                self.logger.error("Failed to check mounted data directory")
+
+            mounts_info = result.stdout.strip()
+            if not mounts_info:
+                self.logger.error("No mounts information found")
+
+            # update data_dir and tmp_dir and log_dir accordingly
+            if mounts_info:
+                # Extract the data directory from the mounts info
+                for mount in mounts_info.split(','):
+                    if 'DATA_DIR' in mount:
+                        self.data_dir = mount.split(':')[1].strip()
+                    if 'TEMP_DIR' in mount:
+                        self.tmp_dir = mount.split(':')[1].strip()
+                    if 'LOG_DIR' in mount:
+                        self.log_dir = mount.split(':')[1].strip()
+
+        except Exception as e:
+            self.logger.error(f"Error checking mounted data directory: {str(e)}")
+
     def check_container_running(self):
         """Check if the right container has been started outside QGIS"""
         try:
             # Check if container exists and is running
-            cmd = f'echo "{self.sudo_password}" | sudo docker ps --filter "name={self.project_name}" --format "{{{{.Status}}}}"'
+            cmd = f'echo "{self.sudo_password}" | sudo docker ps --filter "name={self.project_name}" --format "{{{{.ID}}}} {{{{.Status}}}}"'
             self.logger.debug(f"Checking container status with command: {cmd}")
 
             result = self.run_sudo_command(cmd)
@@ -912,11 +940,14 @@ class EasyEarthPlugin:
                 self.logger.error(f"Error output: {result.stderr}")
                 self.docker_running = False
 
-            container_status = result.stdout.strip()
-            self.logger.debug(f"Container status: '{container_status}'")
+            output = result.stdout.strip()
+            if output:
+                container_id, container_status = output.split(' ', 1)
 
             if container_status and 'Up' in container_status:
                 self.logger.info(f"Container is running with status: {container_status}")
+                # Update data_dir and tmp_dir and log_dir
+                self.check_mounted_data_dir(container_id)
                 # Update UI and state
                 self.docker_running = True
                 self.docker_status.setText("Running")
