@@ -318,7 +318,7 @@ def predict():
                     'message': 'No valid masks generated'
                 }), 400
 
-            geojson_path = f"{PLUGIN_DIR}/tmp/predict-sam_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
+            geojson_path = f"{PLUGIN_DIR}/user/tmp/predict-sam_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
             # Convert to GeoJSON
             geojson = sam.raster_to_vector(
                 masks,

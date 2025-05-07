@@ -35,8 +35,6 @@ def setup_logger():
         plugin_dir = os.path.dirname(__file__)
         log_dir = os.path.join(plugin_dir, 'logs')
         os.makedirs(log_dir, exist_ok=True)
-        tmp_dir = os.path.join(plugin_dir, 'tmp')
-        os.makedirs(tmp_dir, exist_ok=True)
 
         # Create log file name with timestamp
         log_file = os.path.join(log_dir, f'plugin_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
@@ -164,6 +162,9 @@ class EasyEarthPlugin:
 
         # Initialize data directory
         self.data_dir = self.plugin_dir + '/user'
+        # create a tmp directory
+        self.tmp_dir = os.path.join(self.data_dir, 'tmp')
+        os.makedirs(self.tmp_dir, exist_ok=True)
 
     def add_action(self, icon_path, text, callback, enabled_flag=True,
                   add_to_menu=True, add_to_toolbar=True, status_tip=None,
