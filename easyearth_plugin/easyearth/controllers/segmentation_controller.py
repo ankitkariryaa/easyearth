@@ -159,7 +159,7 @@ def predict():
             geojson = segformer.raster_to_vector(
                 masks,
                 transform,
-                # filename=geojson_path
+                filename=geojson_path
             )
 
             return jsonify({
