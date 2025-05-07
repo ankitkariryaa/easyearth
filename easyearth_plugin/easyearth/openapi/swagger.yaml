@@ -148,12 +148,12 @@ paths:
             schema:
               type: object
               properties:
-                model_path:
-                  type: string
-                  description: Path to the hugging face model (segmentation models)
                 image_path:
                   type: string
                   description: Path to the image
+                model_path:
+                  type: string
+                  description: Path to the hugging face model (segmentation models)
                 aois:
                   type: array
                   items:

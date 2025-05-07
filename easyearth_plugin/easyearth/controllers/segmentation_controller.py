@@ -26,7 +26,6 @@ def predict():
         data = request.get_json()
 
         # get env variable DATA_DIR from the docker container
-        DATA_DIR = os.environ.get('EASYEARTH_DATA_DIR')
         TEMP_DIR = os.environ.get('EASYEARTH_TEMP_DIR')
 
         # Validate and convert image path
