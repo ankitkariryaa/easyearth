@@ -7,9 +7,10 @@ RUN apt-get update && apt-get install -y libexpat1 libgdal-dev gdal-bin --no-ins
 ENV APP_DIR=/usr/src/app
 ENV EASYEARTH_DATA_DIR=/usr/src/app/data
 ENV EASYEARTH_TEMP_DIR=/usr/src/app/tmp
+ENV EASYEARTH_LOG_DIR=/usr/src/app/logs
 
 # Create required directories
-RUN mkdir -p $APP_DIR $EASYEARTH_DATA_DIR EASYEARTH_TEMP_DIR
+RUN mkdir -p $APP_DIR $EASYEARTH_DATA_DIR $EASYEARTH_TEMP_DIR $EASYEARTH_LOG_DIR
 WORKDIR $APP_DIR
 
 # Copy only requirements first to leverage Docker cache
