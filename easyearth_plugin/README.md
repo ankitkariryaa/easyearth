@@ -63,11 +63,6 @@ sudo docker-compose build  # build the container
 
 ## Run EasyEarth outside of QGIS
 Start the docker container and send requests to the server using curl or any other HTTP client.
-```bash
-cd easyearth_plugin  # go to the directory where the repo is located
-# sudo docker-compose build  # build the container, can be skipped if already built
-sudo TEMP_DIR=/custom/temp/data DATA_DIR=/custom/data/path docker-compose up  # start the container while mounting the data directory 
-```
 
 ### Health Check
 Check if the server is running, the response should be `Server is alive`
