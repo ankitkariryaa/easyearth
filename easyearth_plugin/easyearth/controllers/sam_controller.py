@@ -324,7 +324,7 @@ def predict():
                 masks,
                 scores,
                 transform,
-                filename=geojson_path
+                # filename=geojson_path
             )
 
             return jsonify({
