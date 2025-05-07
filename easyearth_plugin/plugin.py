@@ -162,9 +162,7 @@ class EasyEarthPlugin:
 
         # Initialize data directory
         self.data_dir = self.plugin_dir + '/user'
-        # create a tmp directory
-        self.tmp_dir = os.path.join(self.data_dir, 'tmp')
-        os.makedirs(self.tmp_dir, exist_ok=True)
+        self.tmp_dir = os.path.join(self.plugin_dir, 'tmp')
 
     def add_action(self, icon_path, text, callback, enabled_flag=True,
                   add_to_menu=True, add_to_toolbar=True, status_tip=None,
@@ -426,8 +424,9 @@ class EasyEarthPlugin:
             # Add dock widget to QGIS
             self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock_widget)
 
-            # initialize the data directory
-            self.data_dir = self.initialize_data_directory() # TODO: make a selection wiget for data_dir insetad
+            # initialize the data and tmp directory
+            # TODO: move to after checking if docker image is running...and return mounted data folder using docker inspect
+            self.data_dir = self.initialize_data_directory()
 
             # Connect to project layer changes
             QgsProject.instance().layersAdded.connect(self.update_layer_combo)
@@ -1013,10 +1012,10 @@ class EasyEarthPlugin:
 
                     # Check if we need to build
                     if not self.check_docker_image():
-                        cmd = f'echo "{self.sudo_password}" | sudo -S docker-compose -p {self.project_name} -f "{compose_path}" up -d --build'
+                        cmd = f'echo "{self.sudo_password}" | sudo -S TEMP_DIR={self.tmp_dir} DATA_DIR={self.data_dir} docker-compose -p {self.project_name} -f "{compose_path}" up -d --build'
                         self.progress_status.setText("Building Docker image (this may take a while)...")
                     else:
-                        cmd = f'echo "{self.sudo_password}" | sudo -S docker-compose -p {self.project_name} -f "{compose_path}" up -d'
+                        cmd = f'echo "{self.sudo_password}" | sudo -S TEMP_DIR={self.tmp_dir} DATA_DIR={self.data_dir} docker-compose -p {self.project_name} -f "{compose_path}" up -d'
                         self.progress_status.setText("Starting existing Docker container...")
 
                     self.docker_process.start('bash', ['-c', cmd])
@@ -1953,14 +1952,21 @@ class EasyEarthPlugin:
                 settings.setValue("easyearth/data_dir", data_dir)
                 self.data_dir = data_dir
 
+                # create a tmp directory
+                self.tmp_dir = os.path.join(data_dir, 'tmp')
+                os.makedirs(self.tmp_dir, exist_ok=True)
+                self.logger.info(f"Tmp data directory: {data_dir}")
+
                 # Show confirmation
                 QMessageBox.information(
                     None,
                     "Data Directory Set",
                     f"Data directory has been set to:\n{data_dir}\n\n"
+                    f"Temporary directory has been set to:\n{tmp_dir}\n\n"
                     "Please make sure to:\n"
                     "1. Place your input images in this directory\n"
-                    "2. Ensure Docker has access to this location"
+                    "2. Ensure Docker has access to this location\n"
+                    "3. Check the temporary directory for any temporary outputs\n"
                 )
 
                 self.logger.info(f"Data directory set to: {data_dir}")

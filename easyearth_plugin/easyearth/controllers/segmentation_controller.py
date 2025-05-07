@@ -58,6 +58,10 @@ def predict():
         # Get the image data from the request
         data = request.get_json()
 
+        # get env variable DATA_DIR from the docker container
+        DATA_DIR = os.environ.get('EASYEARTH_DATA_DIR')
+        TEMP_DIR = os.environ.get('EASYEARTH_TEMP_DIR')
+
         # Validate and convert image path
         image_path = data.get('image_path')
         if not image_path:
@@ -154,7 +158,7 @@ def predict():
                     'message': 'No valid masks generated'
                 }), 400
 
-            geojson_path = f"{PLUGIN_DIR}/user/tmp/predict-segment_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
+            geojson_path = f"{TEMP_DIR}/predict-segment_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
             # Convert to GeoJSON
             geojson = segformer.raster_to_vector(
                 masks,

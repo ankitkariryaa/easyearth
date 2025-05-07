@@ -152,6 +152,10 @@ def predict():
         # Get the image data from the request
         data = request.get_json()
 
+        # get env variable DATA_DIR from the docker container
+        DATA_DIR = os.environ.get('EASYEARTH_DATA_DIR')
+        TEMP_DIR = os.environ.get('EASYEARTH_TEMP_DIR')
+
         # Validate and convert image path
         image_path = data.get('image_path')
         if not image_path:
@@ -237,7 +241,7 @@ def predict():
         try:
             prompts = data.get('prompts', [])
             transformed_prompts = reorganize_prompts(prompts)
-            
+
             # Initialize SAM
             logger.debug("Initializing SAM model")
             sam = Sam(model_path)
@@ -245,14 +249,14 @@ def predict():
             # Handle embeddings
             embedding_path = data.get('embedding_path')
             save_embeddings = data.get('save_embeddings', False)
-            
+
             image_embeddings = None
 
             if embedding_path and os.path.exists(embedding_path):
                 try:
                     logger.debug(f"Loading cached embedding from: {embedding_path}")
                     embedding_data = torch.load(embedding_path)
-                    
+
                     # Handle both old and new format embeddings
                     if isinstance(embedding_data, dict):
                         # New format with metadata
@@ -265,7 +269,7 @@ def predict():
                         # Old format - direct embeddings
                         image_embeddings = embedding_data.to(sam.device)
                         used_cache = True
-                        
+
                 except Exception as e:
                     image_embeddings = None
 
@@ -275,8 +279,6 @@ def predict():
                 image_embeddings = sam.get_image_embeddings(image_array)
 
                 # generate an index file to relate the image to the embedding
-                # get env variable DATA_DIR
-                DATA_DIR = os.environ.get('EASYEARTH_DATA_DIR')
                 os.makedirs(os.path.join(DATA_DIR, 'embeddings'), exist_ok=True)
                 index_path = os.path.join(DATA_DIR, 'embeddings', 'index.json')
                 if os.path.exists(index_path):
@@ -284,12 +286,12 @@ def predict():
                         index = json.load(f)
                 else:
                     index = {}
-                
+
                 # add the embedding path to the index
                 index[image_path] = embedding_path
                 with open(index_path, 'w') as f:
                     json.dump(index, f)
-                
+
                 if save_embeddings and embedding_path:
                     try:
                         os.makedirs(os.path.dirname(embedding_path), exist_ok=True)
@@ -318,7 +320,7 @@ def predict():
                     'message': 'No valid masks generated'
                 }), 400
 
-            geojson_path = f"{PLUGIN_DIR}/user/tmp/predict-sam_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
+            geojson_path = f"{TEMP_DIR}/predict-sam_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
             # Convert to GeoJSON
             geojson = sam.raster_to_vector(
                 masks,

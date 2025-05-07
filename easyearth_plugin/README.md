@@ -57,12 +57,7 @@ sudo docker-compose build  # build the container
 3. Reopen QGIS, click Plugins -> Manage and Install Plugins -> Installed -> click the check box before EasyEarth
 
 ## Run EasyEarth in QGIS
-1. Click Start Docker or in the terminal run `sudo docker-compose up` to start the container
-    ```bash
-    cd easyearth_plugin  # go to the directory where docker-compose.yml is located
-    # sudo docker-compose build  # build the container, can be skipped if already built
-    sudo docker-compose up  # start the container
-    ```
+1. Click Start Docker
 2. Click Browse image and select an image to play with 
 3. Click Start Drawing.
 
@@ -71,7 +66,7 @@ Start the docker container and send requests to the server using curl or any oth
 ```bash
 cd easyearth_plugin  # go to the directory where the repo is located
 # sudo docker-compose build  # build the container, can be skipped if already built
-sudo docker-compose up  # start the container
+sudo TEMP_DIR=/custom/temp/data DATA_DIR=/custom/data/path docker-compose up  # start the container while mounting the data directory 
 ```
 
 ### Health Check

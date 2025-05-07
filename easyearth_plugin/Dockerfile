@@ -1,21 +1,26 @@
 FROM python:3.10
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y libexpat1 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y libexpat1 libgdal-dev gdal-bin --no-install-recommends && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /usr/src/app
-RUN mkdir -p /usr/src/app/user
-WORKDIR /usr/src/app
+# Define environment variables for paths
+ENV APP_DIR=/usr/src/app
+ENV EASYEARTH_DATA_DIR=/usr/src/app/data
+ENV EASYEARTH_TEMP_DIR=/usr/src/app/tmp
+
+# Create required directories
+RUN mkdir -p $APP_DIR $EASYEARTH_DATA_DIR EASYEARTH_TEMP_DIR
+WORKDIR $APP_DIR
 
 # Copy only requirements first to leverage Docker cache
-COPY requirements.txt /usr/src/app/
+COPY requirements.txt $APP_DIR/
 
 # upgrade pip
 RUN pip install --upgrade pip setuptools wheel
 RUN pip install --no-cache-dir -r requirements.txt --upgrade
 
-# Copy the rest of the application
-COPY . /usr/src/app
+# Copy the application code
+COPY . $APP_DIR/
 
 EXPOSE 3781
 
