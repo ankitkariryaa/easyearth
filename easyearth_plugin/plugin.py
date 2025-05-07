@@ -1383,10 +1383,10 @@ class EasyEarthPlugin:
                 geom = feature.geometry()
                 if prompt_type == 'Point':
                     pt = geom.asPoint()
-                    prompts.append({'type': 'Point', 'data': {'points': [[pt.x(), pt.y()]]}}) # TODO: figure out labels for points, when used together with bounding boxes to remove part of the prediction masks
+                    prompts.append({'type': 'Point', 'data': {'points': [[int(pt.x()), int(pt.y())]]}}) # TODO: figure out labels for points, when used together with bounding boxes to remove part of the prediction masks
                 elif prompt_type == 'Box':
                     poly = geom.asPolygon()
-                    prompts.append({'type': 'Box', 'data': {'boxes': [[poly[0][0].x(), poly[0][0].y(), poly[0][2].x(), poly[0][2].y()]]}})
+                    prompts.append({'type': 'Box', 'data': {'boxes': [[int(poly[0][0].x()), int(poly[0][0].y()), int(poly[0][2].x()), int(poly[0][2].y())]]}})
                 else:
                     self.logger.error(f"Unknown prompt type: {prompt_type}")
                     raise ValueError(f"Unknown prompt type: {prompt_type}")
