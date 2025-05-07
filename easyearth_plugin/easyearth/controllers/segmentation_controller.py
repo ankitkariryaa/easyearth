@@ -58,7 +58,7 @@ def predict():
         #             'message': f'Invalid model path: {model_path}'
         #         }), 408
 
-        # # Warmup the model
+        # # TODO: add warmup the model
         # segformer = Segmentation(model_path)
         # logger.debug("Warming up model")
         #

@@ -39,6 +39,8 @@ class Segmentation(BaseModel):
             masks
         """
 
+        # TODO (function): allow to predict for a specific region of the image
+
         self.logger.debug(f"Processing image: {image}")
         if isinstance(image, str) or isinstance(image, Path):
             raw_image = Image.open(image).convert("RGB")

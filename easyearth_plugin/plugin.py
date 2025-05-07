@@ -1,4 +1,6 @@
 # TODO: split into multiple files, plugin.py, docker_manager.py, ui.py, layer_manager.py, prediction.py, utils.py
+# TODO: allow scrapping from wms file...
+# TODO: add function for converting local models to hugging face models
 
 from qgis.PyQt.QtWidgets import (QAction, QDockWidget, QPushButton, QVBoxLayout,
                                 QWidget, QMessageBox, QLabel, QHBoxLayout,
@@ -290,6 +292,7 @@ class EasyEarthPlugin:
             self.model_combo = QComboBox()
             self.model_combo.setEditable(True)
             # Add common models
+            # TODO: add and test model models
             self.model_combo.addItems([
                 "facebook/sam-vit-huge",
                 "restor/tcd-segformer-mit-b5",
@@ -915,6 +918,8 @@ class EasyEarthPlugin:
             container_status = result.stdout.strip()
             self.logger.debug(f"Container status: '{container_status}'")
 
+            # TODO: read mount information if the container is started outside QGIS
+
             if container_status and 'Up' in container_status:
                 self.logger.info(f"Container is running with status: {container_status}")
                 # Update UI and state
@@ -1106,6 +1111,8 @@ class EasyEarthPlugin:
 
     def toggle_drawing(self, checked):
         """Toggle drawing mode"""
+
+        # TODO: handle situations when regretting the drawing
         try:
             self.logger.info(f"Toggle drawing called with checked={checked}")
 

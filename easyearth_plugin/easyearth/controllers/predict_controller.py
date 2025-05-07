@@ -9,7 +9,9 @@ from easyearth import logger
 import random
 from flask import jsonify
 
-# wrap the following code in a function
+# TODO: combine sam_controller and segmentation_controller into one controller
+
+# TODO: standardize the logging function across the project
 def setup_logging(name="predict-controller"):
     """
     Set up logging for the application
