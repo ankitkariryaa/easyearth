@@ -35,6 +35,8 @@ def setup_logger():
         plugin_dir = os.path.dirname(__file__)
         log_dir = os.path.join(plugin_dir, 'logs')
         os.makedirs(log_dir, exist_ok=True)
+        tmp_dir = os.path.join(plugin_dir, 'tmp')
+        os.makedirs(tmp_dir, exist_ok=True)
 
         # Create log file name with timestamp
         log_file = os.path.join(log_dir, f'plugin_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')

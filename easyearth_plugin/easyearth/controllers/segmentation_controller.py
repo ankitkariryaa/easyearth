@@ -155,7 +155,6 @@ def predict():
                 }), 400
 
             geojson_path = f"{PLUGIN_DIR}/tmp/predict-segment_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
-            os.makedirs(os.path.dirname(geojson_path), exist_ok=True)
             # Convert to GeoJSON
             geojson = segformer.raster_to_vector(
                 masks,
