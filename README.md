@@ -48,7 +48,7 @@ cp -r ./easyearth/easyearth_plugin easyearth_plugin
 
 ```bash
 cd easyearth_plugin  # go to the directory where docker-compose.yml is located
-sudo docker-compose build  # build the container
+sudo docker-compose up -d # build the container
 ```
 
 ## Install easyearth plugin on qgis
@@ -57,21 +57,21 @@ sudo docker-compose build  # build the container
 3. Reopen QGIS, click Plugins -> Manage and Install Plugins -> Installed -> click the check box before EasyEarth
 
 ## Run EasyEarth in QGIS
-1. Click Start Docker or in the terminal run `sudo docker-compose up` to start the container
+1. Click Start Docker or in the terminal run `sudo docker-compose up -d` to start the container
     ```bash
     cd easyearth_plugin  # go to the directory where docker-compose.yml is located
     # sudo docker-compose build  # build the container, can be skipped if already built
-    sudo docker-compose up  # start the container
+    sudo docker-compose up -d # start the container
     ```
 2. Click Browse image and select an image to play with 
 3. Click Start Drawing.
 
-## Run EasyEarth outside of QGIS
+## Run EasyEarth outside QGIS
 Start the docker container and send requests to the server using curl or any other HTTP client.
 ```bash
 cd easyearth_plugin  # go to the directory where the repo is located
 # sudo docker-compose build  # build the container, can be skipped if already built
-sudo docker-compose up  # start the container
+sudo docker-compose up -d  # start the container
 ```
 
 ### Health Check
@@ -83,18 +83,18 @@ curl -X GET http://127.0.0.1:3781/v1/easyearth/ping'
 Send prompts to the server and get predictions from SAM model. Check the generated geojson in easyearth_plugin/user/tmp/...
 ```bash
 curl -X POST http://127.0.0.1:3781/v1/easyearth/sam-predict -H "Content-Type: application/json" -d '{
-  "image_path": "/usr/src/app/user/DJI_0108.JPG",
-  "embedding_path": "/usr/src/app/user/embeddings/DJI_0108.pt",  # if empty, the code will generate embeddings first
-  "prompts": [
+  "image_path": "/usr/src/app/user/DJI_0108.JPG",                                                                    
+  "prompts": [ 
     {
       "type": "Point",
       "data": {
-        "points": [[850, 1100]],
+        "points": [[850, 1100]]
       }
     }  
                       
   ]            
 }'
+
 ```
 ### Use models with no prompts
 Call other segmentation models with out prompt engineering
