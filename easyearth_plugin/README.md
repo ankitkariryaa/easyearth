@@ -121,3 +121,21 @@ http://localhost:3781/v1/easyearth/swagger.json  # TODO: not working yet...
 source venv/bin/activate
 tox
 ```
+
+## Useful docker commands
+```bash
+# List all docker containers
+docker ps -a
+# List all docker images
+docker images
+# Remove all docker containers
+docker rm $(docker ps -a -q)
+# Remove all docker images
+docker rmi $(docker images -q)
+# Remove all docker volumes
+docker volume rm $(docker volume ls -q)
+# check the logs of the container, where you can also get information on the mounted directories
+sudo docker inspect <container_id>
+# check the mounted directory in a running docker container
+sudo docker exec -it <container_id_or_name> /usr/src/app
+```
