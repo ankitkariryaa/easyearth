@@ -56,6 +56,12 @@ sudo docker-compose down  # stop the docker container
 2. Copy easyearth_plugin folder to "plugins"
 3. Reopen QGIS, click Plugins -> Manage and Install Plugins -> Installed -> click the check box before EasyEarth
 
+or in terminal:
+```bash
+cd ~/Downloads/easyearth_plugin  # go to the directory where easyearth_plugin is located
+cp -r ./easyearth_plugin ~/.local/share/QGIS/QGIS3/profiles/default/python/plugins/  # copy the easyearth_plugin folder to the plugins directory
+```
+
 ## Run EasyEarth in QGIS
 1. Stop the docker container if it is running outside of QGIS. Open a terminal and run:
     ```bash
