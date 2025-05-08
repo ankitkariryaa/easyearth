@@ -1,21 +1,29 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask import request, jsonify
 import numpy as np
 import rasterio
-import pyproj  # Add this for CRS transformation
+import torch  # Add this for CRS transformation
 from easyearth.models.sam import Sam
 from PIL import Image
 import requests
 import os
+import logging
+import json
+from datetime import datetime
+import sys
+try:
+    from .predict_controller import verify_image_path, verify_model_path, setup_logging
+except ImportError:
+    # For direct script execution
+    from predict_controller import verify_image_path, verify_model_path, setup_logging
 
-def reorgnize_prompts(prompts):
+def reorganize_prompts(prompts):
     """
     Reorganize prompts into a dictionary with separate lists for points, labels, boxes, and text
 
     Args:
         prompts (list): List of prompt dictionaries
     Returns:
-        transformed_prompts (dict): Dictionary with separate lists for points, labels, boxes, and text
+        transformed_prompts (dict): Dictionary with separate lists for points, labels, boxes, and text, each object with the dimension of (batch, number of objectsm, dimention of each object) with the batch dimention as 1
     """
 
     transformed_prompts = {
@@ -30,15 +38,22 @@ def reorgnize_prompts(prompts):
         prompt_data = prompt.get('data', {})
         if prompt_type == 'Point':
             transformed_prompts['points'].append(prompt_data.get('points', []))
-            transformed_prompts['labels'].append(prompt_data.get('labels', []))
+            transformed_prompts['labels'].extend(prompt_data.get('labels', []))
         elif prompt_type == 'Box':
-            transformed_prompts['boxes'].append(prompt_data.get('boxes', []))
+            transformed_prompts['boxes'].extend(prompt_data.get('boxes', []))
         elif prompt_type == 'Text':
-            transformed_prompts['text'].append(prompt_data.get('text', []))
+            transformed_prompts['text'].extend(prompt_data.get('text', []))
+
+    for key in ['points', 'labels', 'boxes', 'text']:
+        if len(transformed_prompts[key]) > 0:
+            transformed_prompts[key] = [transformed_prompts[key]]
+    if len(transformed_prompts['points']) > 0:
+        if np.array(transformed_prompts['points']).shape[1] == 1:
+            transformed_prompts['points'] = transformed_prompts['points'][0]
 
     return transformed_prompts
 
-
+# TODO: add this to the predict function
 def reproject_prompts(prompts, transform, image_shape):
     """
     Transform all types of prompts from map coordinates to pixel coordinates
@@ -98,110 +113,248 @@ def reproject_prompts(prompts, transform, image_shape):
     return transformed
 
 def predict():
+    """Handle prediction request with improved embedding handling"""
+    # Set up logging
+    logger = setup_logging('sam-controller')
+    logger.debug("Starting SAM prediction")
+
     try:
         # Get the image data from the request
         data = request.get_json()
 
-        # data = json_data
-        image_path = data.get('image_path')
-        target_crs = data.get('target_crs') if data.get('target_crs') else None  # The CRS for the output masks
+        # get env variable DATA_DIR from the docker container
+        DATA_DIR = os.environ.get('EASYEARTH_DATA_DIR')
+        TEMP_DIR = os.environ.get('EASYEARTH_TEMP_DIR')
 
+        # Validate and convert image path
+        image_path = data.get('image_path')
         if not image_path:
             return jsonify({
                 'status': 'error',
                 'message': 'image_path is required'
             }), 400
-
-        if image_path.endswith('.tif'):
-            # Open the image using rasterio to get geospatial information
-            with rasterio.open(image_path) as src:
-                # Get image metadata
-                transform = src.transform
-                source_crs = src.crs.to_string()
-
-                # Read image data
-                image_array = src.read()
-                # Transpose from (bands, height, width) to (height, width, bands)
-                image_array = np.transpose(image_array, (1, 2, 0))
-                # get transform of the target CRS using pyproj
-            if target_crs is not None and target_crs != source_crs:
-                target_crs = pyproj.CRS.from_string(target_crs)
-                transform = pyproj.Transformer.from_crs(source_crs, target_crs, always_xy=True).transform(transform)
-        elif image_path.startswith('http'):
-            image_array = Image.open(requests.get(image_path, stream=True).raw).convert("RGB")
-            image_array = np.array(image_array)
-            transform = None
+        # Verify image path
         else:
-            image_array = np.array(Image.open(image_path))
-            transform = None
+            if not verify_image_path(image_path):
+                return jsonify({
+                    'status': 'error',
+                    'message': f'Invalid image path: {image_path}'
+                }), 408
 
-        # Generate masks
-        sam = Sam()
-
-        # Handle image embeddings, if not provided, generate a new one, if save_embeddings is False, don't save the embedding
-        save_embeddings = data.get('save_embeddings', False)
-        embedding_path = data.get('embedding_path', None)
-        if embedding_path and os.path.exists(embedding_path):
-            image_embeddings = np.load(embedding_path)
-        else:
-            image_embeddings = sam.get_image_embeddings(sam.model, sam.processor, image_array)
-            if save_embeddings and embedding_path:
-                np.save(embedding_path, image_embeddings.cpu().numpy())
-
-        # Process prompts
-        prompts = data.get('prompts', [])
-        if not prompts:
+        # Get model path and warm up
+        model_path = data.get('model_path', 'facebook/sam-vit-base')
+        if not model_path:
             return jsonify({
                 'status': 'error',
-                'message': 'prompts are required'
-            }), 400
+                'message': 'model_path is required'
+            }), 408
+        # Verify model path
+        # else:
+        #     if not verify_model_path(model_path):
+        #         return jsonify({
+        #             'status': 'error',
+        #             'message': f'Invalid model path: {model_path}'
+        #         }), 408
 
-        # Reorgnize the prompts
-        prompts = reorgnize_prompts(prompts)
+        # Warm up the model
+        logger.debug(f"Warmup model: {model_path}")
+        sam = Sam(model_path)
+        # create a random input tensor to warm up the model, shape 1024x1024x3
+        sam.get_masks(np.zeros((1, 3, 512, 512)))  # Dummy input for warmup
+        logger.debug(f"Model warmup completed: {model_path}")
 
-        # Transform all prompts
-        if image_path.endswith('.tif'):
-            transformed_prompts = reproject_prompts(
-                prompts,
-                transform,
-                image_array.shape
+        # Load image with detailed error handling
+        try:
+            if image_path.startswith(('http://', 'https://')):
+                # Handle URL images
+                response = requests.get(image_path, stream=True)
+                response.raise_for_status()
+                image = Image.open(response.raw).convert('RGB')
+                image_array = np.array(image)
+                transform = None
+                source_crs = None
+            elif image_path.endswith('.tif'):
+                # Handle local GeoTIFF files
+                with rasterio.open(image_path) as src:
+                    transform = src.transform
+                    source_crs = src.crs.to_string()
+                    image_array = src.read()
+                    image_array = np.transpose(image_array, (1, 2, 0))
+            else:
+                # Handle local regular images
+                logger.debug(f"Loading local image from: {image_path}")
+                image = Image.open(image_path).convert('RGB')
+                image_array = np.array(image)
+                transform = None
+                source_crs = None
+
+            # Ensure image is in the correct format
+            if len(image_array.shape) == 2:
+                image_array = np.stack([image_array] * 3, axis=-1)
+            elif image_array.shape[2] > 3:
+                image_array = image_array[:, :, :3]
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error downloading image from URL: {str(e)}")
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to download image: {str(e)}'
+            }), 500
+        except Exception as e:
+            logger.error("Error loading image:", exc_info=True)
+            return jsonify({
+                'status': 'error',
+                'message': f'Failed to load image: {str(e)}'
+            }), 500
+
+        # Process prompts
+        try:
+            prompts = data.get('prompts', [])
+            transformed_prompts = reorganize_prompts(prompts)
+
+            # Initialize SAM
+            logger.debug("Initializing SAM model")
+            sam = Sam(model_path)
+
+            # Handle embeddings
+            embedding_path = data.get('embedding_path')
+            save_embeddings = data.get('save_embeddings', False)
+
+            image_embeddings = None
+
+            if embedding_path and os.path.exists(embedding_path):
+                try:
+                    logger.debug(f"Loading cached embedding from: {embedding_path}")
+                    embedding_data = torch.load(embedding_path)
+
+                    # Handle both old and new format embeddings
+                    if isinstance(embedding_data, dict):
+                        # New format with metadata
+                        if embedding_data.get('image_shape') == image_array.shape[:2]:
+                            image_embeddings = embedding_data['embeddings'].to(sam.device)
+                            used_cache = True
+                        else:
+                            logger.warning("Cached embedding shape mismatch, will generate new one")
+                    else:
+                        # Old format - direct embeddings
+                        image_embeddings = embedding_data.to(sam.device)
+                        used_cache = True
+
+                except Exception as e:
+                    image_embeddings = None
+
+            # Generate new embeddings if needed
+            else:
+                logger.info("Generating new embeddings")
+                image_embeddings = sam.get_image_embeddings(image_array)
+
+                # generate an index file to relate the image to the embedding
+                os.makedirs(os.path.join(DATA_DIR, 'embeddings'), exist_ok=True)
+                index_path = os.path.join(DATA_DIR, 'embeddings', 'index.json')
+                if os.path.exists(index_path):
+                    with open(index_path, 'r') as f:
+                        index = json.load(f)
+                else:
+                    index = {}
+
+                # add the embedding path to the index
+                index[image_path] = embedding_path
+                with open(index_path, 'w') as f:
+                    json.dump(index, f)
+
+                if save_embeddings and embedding_path:
+                    try:
+                        os.makedirs(os.path.dirname(embedding_path), exist_ok=True)
+                        # Save with metadata
+                        embedding_data = {
+                            'embeddings': image_embeddings.cpu(),
+                            'image_shape': image_array.shape[:2],
+                            'timestamp': datetime.now().isoformat()
+                        }
+                        torch.save(embedding_data, embedding_path)
+                    except Exception as e:
+                        logger.error(f"Failed to save embeddings: {str(e)}")
+
+            # Get masks
+            masks, scores = sam.get_masks(
+                image_array,
+                image_embeddings=image_embeddings,
+                input_points=transformed_prompts['points'] if len(transformed_prompts['points'])>0 else None,
+                input_labels=transformed_prompts['labels'] if len(transformed_prompts['labels'])>0 else None,
+                input_boxes=transformed_prompts['boxes'] if len(transformed_prompts['boxes'])>0 else None,
             )
-        else:
-            transformed_prompts = prompts
 
-        # Use transformed prompts with SAM
-        masks, scores = sam.get_masks(
-            sam.model,
-            image_array,
-            sam.processor,
-            image_embeddings,
-            input_points=transformed_prompts['points'] if transformed_prompts['points'] else None,
-            input_labels=transformed_prompts['labels'] if transformed_prompts['labels'] else None,
-            input_boxes=transformed_prompts['boxes'] if transformed_prompts['boxes'] else None,
-        )
+            if masks is None:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'No valid masks generated'
+                }), 400
 
-        # Convert masks to GeoJSON with proper coordinate system
-        if masks is not None:
+            geojson_path = f"{TEMP_DIR}/predict-sam_{os.path.basename(image_path)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.geojson"
+            # Convert to GeoJSON
             geojson = sam.raster_to_vector(
                 masks,
                 scores,
                 transform,
-                filename="/tmp/masks.geojson"
+                filename=geojson_path
             )
 
             return jsonify({
                 'status': 'success',
                 'features': geojson,
-                'crs': target_crs
+                'crs': source_crs
             }), 200
-        else:
+
+        except Exception as e:
             return jsonify({
                 'status': 'error',
-                'message': 'No valid masks generated'
-            }), 400
+                'message': f'Prediction error: {str(e)}'
+            }), 500
 
     except Exception as e:
         return jsonify({
             'status': 'error',
-            'message': str(e)
+            'message': f'Server error: {str(e)}'
         }), 500
+
+#
+# # test reorganize_prompts
+# if __name__ == "__main__":
+#     # Test reorganize_prompts function
+#     test_prompts = [
+#         {
+#             'type': 'Point',
+#             'data': {
+#                 'points': [[850, 1100]],
+#             }
+#         }
+#         ,
+#         {
+#             'type': 'Point',
+#             'data': {
+#                 'points': [[2250, 1000]],
+#             }
+#         }
+#     ]
+#
+#     transformed_prompts = reorganize_prompts(test_prompts)
+#
+#     from easyearth_plugin.easyearth.models.sam import Sam
+#     sam = Sam()
+#     image_url = "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png"
+#     raw_image = Image.open(requests.get(image_url, stream=True).raw).convert("RGB")
+#     img_transform = rasterio.transform.from_bounds(0, 0, 1024, 1024, 1024, 1024)
+#     image_embeddings = sam.get_image_embeddings(raw_image)
+#
+#     # Test reproject_prompts function
+#     masks, scores = sam.get_masks(
+#         raw_image,
+#         image_embeddings=image_embeddings,
+#         input_points=transformed_prompts['points'] if len(transformed_prompts['points']) > 0 else None,
+#         input_labels=transformed_prompts['labels'] if len(transformed_prompts['labels']) > 0 else None,
+#         input_boxes=transformed_prompts['boxes'] if len(transformed_prompts['boxes']) > 0 else None,
+#         multimask_output=True
+#     )
+#     # to vector
+#     geojson = sam.raster_to_vector(masks, scores, img_transform,
+#                                    filename="/home/yan/PycharmProjects/easyearth/easyearth_plugin/tmp/masks_multipoints.geojson")

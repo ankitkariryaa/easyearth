@@ -1,4 +1,4 @@
-FROM python:3.10
+FROM python:3.10-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y libexpat1 libgdal-dev gdal-bin --no-install-recommends && rm -rf /var/lib/apt/lists/*
@@ -27,7 +27,3 @@ COPY . $APP_DIR/
 EXPOSE 3781
 
 CMD ["python", "-m", "easyearth.app", "--host", "0.0.0.0", "--port", "3781"]
-
-# TODO: fix gunicorn, so far it's not working
-# ENTRYPOINT ["gunicorn"]
-# CMD ["-w", "2", "-b", "0.0.0.0:3781", "easyearth.wsgi:app"]

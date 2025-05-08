@@ -11,7 +11,7 @@ info:
 paths:
   /ping:
     get:
-      summary: Check if the server is alive
+      summary: Check if the easyearth is alive
       operationId: easyearth.controllers.predict_controller.ping
       responses:
         200:
@@ -90,6 +90,9 @@ paths:
             schema:
               type: object
               properties:
+                model_path:
+                  type: string
+                  description: Path to the hugging face model (sam model)
                 image_path:
                   type: string
                   description: Path to the image
@@ -130,11 +133,64 @@ paths:
                       properties:
                         type:
                           type: string
-                          enum: [ "Class", "Points", "Polygons" ]
+                          enum: ["Class", "Points", "Polygons"]
+                        data:
+                          type: object
+                          description: Prediction-specific data
+  /segment-predict:
+    post:
+      summary: Segment all relevant objects for a given image using a segmentation model with no prompt engineering
+      operationId: easyearth.controllers.segmentation_controller.predict
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                image_path:
+                  type: string
+                  description: Path to the image
+                model_path:
+                  type: string
+                  description: Path to the hugging face model (segmentation models)
+                aois:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum: ["Polygons"]
+                      data:
+                        type: object
+                        description: Prompt-specific data
+                        nullable: true
+                        example: { }
+              required:
+                - image_path
+      responses:
+        "200":
+          description: Analysis response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  model_description:
+                    type: string
+                  predictions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum: ["Class", "Polygons"]
                         data:
                           type: object
                           description: Prediction-specific data
 servers:
   - url: /v1/easyearth/
-    description: Local server
+    description: Local easyearth
 

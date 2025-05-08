@@ -1,29 +1,30 @@
-"""Predicts object masks for a given prompts using SAM"""
+"""SAM model implementation
+reference: https://colab.research.google.com/github/huggingface/notebooks/blob/main/examples/segment_anything.ipynb#scrollTo=UQ8meq5mDYQ1
+"""
 
-import torch
+try:
+    from .base_model import BaseModel
+except ImportError:
+    # For direct script execution
+    from base_model import BaseModel
 from transformers import SamModel, SamProcessor
-
+import torch
 from PIL import Image
-import requests
-
-import rasterio
-from rasterio.features import shapes as get_shapes
 import numpy as np
-import geopandas as gpd
+from typing import Optional, List, Tuple, Union, Any
+import requests
+import rasterio
+from pathlib import Path
 
-from rasterio import features
-
-class Sam:
-    def __init__(self, model_version="facebook/sam-vit-huge"):
+class Sam(BaseModel):
+    def __init__(self, model_path: str = "facebook/sam-vit-huge"):
         """Initialize the SAM model
         Args:
-            model_version: The model version to use
+            model_path: The model to use
         """
-
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = SamModel.from_pretrained(model_version).to(self.device)
-        self.processor = SamProcessor.from_pretrained(model_version)
-
+        super().__init__(model_path)
+        self.model = SamModel.from_pretrained(model_path, cache_dir=self.cache_dir).to(self.device)
+        self.processor = SamProcessor.from_pretrained(model_path, cache_dir=self.cache_dir)
 
     def get_metadata(self, image):
         """Get the metadata for a given image
@@ -36,57 +37,85 @@ class Sam:
             metadata = src.meta
         return metadata
 
-    def get_image_embeddings(self, model, processor, raw_image):
+    def get_image_embeddings(self, raw_image: Union[Image.Image, np.ndarray]) -> torch.Tensor:
         """Get the image embeddings for a given image
         Args:
-            model: The model to use
-            processor: The processor to use
-            raw_image: The image to process
-        Returns: The image embeddings
+            raw_image: The image to process, np.ndarray
+        Returns:
+            The image embeddings
         """
-
-        inputs = processor(raw_image, return_tensors="pt").to(self.device)
-        image_embeddings = model.get_image_embeddings(inputs["pixel_values"])
+        inputs = self.processor(raw_image, return_tensors="pt").to(self.device)
+        image_embeddings = self.model.get_image_embeddings(inputs["pixel_values"])
         return image_embeddings
 
-    def get_masks(self, model, raw_image, processor, image_embeddings, input_points=None, input_boxes=None, input_labels=None, multimask_output=True):
+    def get_masks(self,
+                 image: Union[str, Path, Image.Image, np.ndarray],
+                 input_points: Optional[List] = None,
+                 input_boxes: Optional[List] = None,
+                 input_labels: Optional[List] = None,
+                 image_embeddings: Optional[torch.Tensor] = None, 
+                 multimask_output = True) -> Tuple[torch.Tensor, torch.Tensor]:
         """Get the masks for a given prompt
         Args:
-            model: The model to use
-            processor: The processor to use
-            image_embeddings: The image embeddings
-            input_points: The 2D points
-            input_boxes: The bounding boxes
-            input_labels: The labels
-        Returns: The masks and the scores
+            image: The image to process
+            input_points: Optional point prompts
+            input_boxes: Optional box prompts
+            input_labels: Optional labels
+            image_embeddings: Optional pre-computed embeddings
+            multimask_output: Optional, if set to True, allowing one mask for one prompt point, but need to add one dimension to the point prompt.
+        Returns:
+            Tuple of (masks, scores)
         """
+        if isinstance(image, str) or isinstance(image, Path):
+            raw_image = Image.open(image).convert("RGB")
+        else:
+            raw_image = image
 
-        inputs = processor(raw_image, input_points=input_points, input_boxes=input_boxes, input_labels=input_labels, return_tensors="pt").to(self.device)
+        if image_embeddings is None:
+            image_embeddings = self.get_image_embeddings(raw_image)
+
+        inputs = self.processor(
+            raw_image,
+            input_points=input_points,
+            input_boxes=input_boxes,
+            input_labels=input_labels,
+            return_tensors="pt"
+        ).to(self.device)
+
         inputs.pop("pixel_values", None)
         inputs.update({"image_embeddings": image_embeddings})
 
         with torch.no_grad():
-            outputs = model(**inputs, multimask_output=multimask_output)  # TODO: so maybe at the moment do not allow hollow masks where it requires multimask_output=True...
+            outputs = self.model(**inputs, multimask_output=multimask_output) # TODO: so maybe at the moment do not allow hollow masks where it requires multimask_output=True...
 
-        masks = processor.image_processor.post_process_masks(outputs.pred_masks.cpu(), inputs["original_sizes"].cpu(), inputs["reshaped_input_sizes"].cpu())
+
+        # TODO: should this be on gpu or cpu?
+        masks = self.processor.image_processor.post_process_masks(
+            outputs.pred_masks.cpu(),
+            inputs["original_sizes"].cpu(),
+            inputs["reshaped_input_sizes"].cpu()
+        )
         scores = outputs.iou_scores.cpu()
+
         return masks, scores
 
-    def raster_to_vector(self, masks, scores, img_transform=None, filename=None):
-        """Converts a raster mask to a vector mask
+    def raster_to_vector(self, masks: Union[torch.Tensor, np.ndarray], scores: Union[torch.Tensor, np.ndarray], img_transform: Optional[Any] = None, filename: Optional[str] = None):
+        """Extends base raster_to_vector with SAM-specific processing
         Args:
-            masks: The raster mask
-        Returns: The vector mask
+            masks: The masks to process, [(Object, Mask, Height, Width)] -> One object may have multiple masks with different scores
+            scores: The scores for the masks
+            img_transform: The image transform
+            filename: The filename to save the output
+        Returns:
+            geojson: The GeoJSON output of predicted masks
         """
 
         num_masks = masks[0].shape[0]
         num_scores = masks[0].shape[1]
 
         # get the object id for each mask
-        objects_id = torch.arange(num_masks).view(-1, 1, 1, 1).expand_as(
-            masks[0])  # the first dimension is the object id
-        masks_id = torch.where(masks[0], objects_id + 1, torch.tensor(
-            0))  # the second dimension is the mask id, one object may have multiple predicted masks with different confidence scores
+        objects_id = torch.arange(num_masks).view(-1, 1, 1, 1).expand_as(masks[0])  # the first dimension is the object id
+        masks_id = torch.where(masks[0], objects_id + 1, torch.tensor(0))  # the second dimension is the mask id, one object may have multiple predicted masks with different confidence scores
 
         # if multimask_output is True, then we have multiple masks for each object with different scores, then we choose the one with the highest score
         if num_scores > 1:
@@ -109,42 +138,13 @@ class Sam:
 
         # TODO: is there a better way? this will cause potential problems for overlapping predictions -> for now, the latter prediction will overwrite the former...
         # reduce the dimensions of the masks to 2D by choosing the largest value
-        if len(masks_combined.shape) > 2:
-            masks_combined = np.max(masks_combined, axis=0)
+        if masks_combined.shape[0] > 1:
+            masks_combined = torch.amax(masks_combined, dim=0, keepdim=False).numpy().astype(np.uint8)
 
-        # convert tensor to numpy array
-        if isinstance(masks_combined, torch.Tensor):
-            masks_combined = masks_combined.cpu().numpy()
-        # convert to uint8
-        masks_combined = (masks_combined > 0).astype(np.uint8)
-
-        if img_transform is not None:
-            shape_generator = features.shapes(
-                masks_combined,
-                mask=masks_combined>0,
-                transform=img_transform,
-            )
-        else:
-            shape_generator = features.shapes(
-                masks_combined,
-                mask=masks_combined>0,
-            )
-
-        geojson = [
-            {"properties": {"uid": value}, "geometry": polygon}
-            for polygon, value in shape_generator
-        ]
-
-        if filename:
-            # save geojson as .geojson file
-            gdf = gpd.GeoDataFrame.from_features(geojson)
-            gdf.to_file(filename=filename, driver="GeoJSON")
-
-        return geojson
+        return super().raster_to_vector([masks_combined], img_transform, filename)
 
 
 if __name__ == "__main__":
-
     image_url = "https://huggingface.co/ybelkada/segment-anything/resolve/main/assets/car.png"
     raw_image = Image.open(requests.get(image_url, stream=True).raw).convert("RGB")
     img_transform = rasterio.transform.from_bounds(0, 0, 1024, 1024, 1024, 1024)
@@ -153,26 +153,31 @@ if __name__ == "__main__":
     input_boxes = [[[650, 900, 1000, 1250]]]
     multiple_boxes = [[[620, 900, 1000, 1255], [2050, 800, 2400, 1150]]]
     input_labels = [[0]]
-    multiple_points = [[[[850, 1100]], [[2250, 1000]]]] # one mask for each point
+    multiple_points = [[[[850, 1100]], [[2250, 1000]]]]  # one mask for each point
 
     sam = Sam()
-    image_embeddings = sam.get_image_embeddings(sam.model, sam.processor, raw_image)
+    image_embeddings = sam.get_image_embeddings(raw_image)
 
     # No prompts
-    masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings)
+    masks, scores = sam.get_masks(raw_image, image_embeddings=image_embeddings)
     geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_no.geojson")
+
     # Single points
-    masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_points=input_points)
+    masks, scores = sam.get_masks(raw_image, image_embeddings=image_embeddings, input_points=input_points)
     geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_point.geojson")
+
     # Multiple points, and one point one (set of) mask
-    masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_points=multiple_points)
+    masks, scores = sam.get_masks(raw_image, image_embeddings=image_embeddings, input_points=multiple_points)
     geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_multipoint.geojson")
+
     # Single bounding box
-    masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_boxes=input_boxes)
+    masks, scores = sam.get_masks(raw_image, image_embeddings=image_embeddings, input_boxes=input_boxes)
     geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_bbox.geojson")
+
     # Bounding box and point with label 0 to mask out parts of the image
-    masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_points=input_points, input_boxes=input_boxes, input_labels=input_labels)
+    masks, scores = sam.get_masks(raw_image, image_embeddings=image_embeddings, input_points=input_points, input_boxes=input_boxes, input_labels=input_labels, multimask_output=True)
     geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_point_bbox.geojson")
-    # Multiple prompts and multiple masks
-    masks, scores = sam.get_masks(sam.model, raw_image, sam.processor, image_embeddings, input_boxes=multiple_boxes)
+
+    # Multiple boxes and one set of masks for each box
+    masks, scores = sam.get_masks(raw_image, image_embeddings=image_embeddings, input_boxes=multiple_boxes)
     geojson = sam.raster_to_vector(masks, scores, img_transform, filename="/tmp/masks_multibbox.geojson")
