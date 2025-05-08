@@ -23,8 +23,8 @@ class Sam(BaseModel):
             model_path: The model to use
         """
         super().__init__(model_path)
-        self.model = SamModel.from_pretrained(model_path).to(self.device)
-        self.processor = SamProcessor.from_pretrained(model_path)
+        self.model = SamModel.from_pretrained(model_path, cache_dir=self.cache_dir).to(self.device)
+        self.processor = SamProcessor.from_pretrained(model_path, cache_dir=self.cache_dir)
 
     def get_metadata(self, image):
         """Get the metadata for a given image

@@ -26,6 +26,9 @@ class BaseModel:
         self._setup_cuda()
         self.device = self._get_device()
 
+        # Get environment variables from docker container
+        self.cache_dir = os.environ.get('MODEL_CACHE_DIR', '~/.cache/huggingface/hub')
+
     # TODO: figure out why GPU is not working on my computer
     def _setup_cuda(self):
         """Setup CUDA environment before initialization"""
