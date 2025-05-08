@@ -13,8 +13,10 @@ services:
       - ${DATA_DIR:-./data}:/usr/src/app/data # Data directory
       - ${TEMP_DIR:-./tmp}:/usr/src/app/tmp  # Temporary directory
       - ${LOG_DIR:-./logs}:/usr/src/app/logs  # Log directory
+      - ${MODEL_DIR:-~/.cache/easyearth/models}:/usr/src/app/.cache/models  # Model directory
     environment:
       - PYTHONUNBUFFERED=1
       - EASYEARTH_DATA_DIR=/usr/src/app/data
       - EASYEARTH_TEMP_DIR=/usr/src/app/tmp
       - EASYEARTH_LOG_DIR=/usr/src/app/logs
+      - MODEL_CACHE_DIR=/usr/src/app/.cache/models
