@@ -47,7 +47,7 @@ configure_directory() {
 # Build Docker image
 build_docker_image() {
   echo "Building Docker image..."
-  sudo docker-compose build --no-cache
+  sudo docker-compose build --no-cache -t easyearth_plugin_easyearth-server:latest
 }
 
 # Start Docker container
