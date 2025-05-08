@@ -28,15 +28,7 @@ easyearth
 * Python 3.6 +
 * QGIS
 
-## Installing docker
-
-For linux user, do not use snap to install docker and docker-compose  # TODO: need to see if it is an issue for windows user...
-```bash
-sudo apt update
-sudo apt install docker-compose
-```
-
-## Download the code and only need the easyearth_plugin folder
+## Download the project repository
 ```bash
 # go to your download directory
 cd ~/Downloads  # Specify your own path where you want to download the code
@@ -45,7 +37,7 @@ cp -r ./easyearth/easyearth_plugin easyearth_plugin
 ```
 
 ## Set up the docker container
-This step will build the docker image and start the container with the server running.
+This step will install docker-compose, build the docker image, and start the container with the server running.
 ```bash
 cd easyearth_plugin  # go to the directory where docker-compose.yml is located
 chmod +x ./setup.sh  # make the setup.sh executable
@@ -73,8 +65,12 @@ sudo docker-compose down  # stop the docker container
 3. Click Browse image and select an image to play with 
 4. Click Start Drawing.
 
-## Run EasyEarth outside of QGIS
+## Run EasyEarth outside QGIS
 Start the docker container and send requests to the server using curl or any other HTTP client.
+```bash
+cd easyearth_plugin  # go to the directory where the repo is located
+sudo TEMP_DIR=/custom/temp/data DATA_DIR=/custom/data/path LOG_DIR=/custom/log/path MODEL_CACHE_DIR=/custom/cache/path docker-compose up -d # start the container while mounting the custom directories.
+```
 
 ### Health Check
 Check if the server is running, the response should be `Server is alive`
