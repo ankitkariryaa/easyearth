@@ -69,7 +69,7 @@ sudo docker-compose down  # stop the docker container
 Start the docker container and send requests to the server using curl or any other HTTP client.
 ```bash
 cd easyearth_plugin  # go to the directory where the repo is located
-sudo TEMP_DIR=/custom/temp/data DATA_DIR=/custom/data/path LOG_DIR=/custom/log/path MODEL_CACHE_DIR=/custom/cache/path docker-compose up -d # start the container while mounting the custom directories.
+sudo TEMP_DIR=/custom/temp/data DATA_DIR=/custom/data/path LOG_DIR=/custom/log/path MODEL_DIR=/custom/cache/path docker-compose up -d # start the container while mounting the custom directories.
 ```
 
 ### Health Check

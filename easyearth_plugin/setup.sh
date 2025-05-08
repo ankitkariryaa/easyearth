@@ -5,6 +5,7 @@ set -e
 
 # Set the script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IMAGE_NAME="easyearth_plugin_easyearth-server"
 
 # Change the permissions of the script directory
 chmod -R 755 "$SCRIPT_DIR"
@@ -19,13 +20,21 @@ check_docker_installation() {
   fi
 }
 
+# if not cache folder exists, create it
+create_cache_folder() {
+  if [ ! -d "~/.cache/easyearth/models" ]; then
+    mkdir -p "~/.cache/easyearth/models"
+    chmod -R 755 "~/.cache/easyearth/models"
+  fi
+}
+
 # Check if the docker image easyearth_plugin_easyearth-server exists, if exists return 0 else return 1
 check_docker_image() {
-  if sudo docker images | grep -q "easyearth_plugin_easyearth-server"; then
-    echo "Docker image easyearth_plugin_easyearth-server already exists."
+  if sudo docker-compose images | grep -q "$IMAGE_NAME"; then
+    echo "Docker image $IMAGE_NAME already exists."
     return 0
   else
-    echo "Docker image easyearth_plugin_easyearth-server does not exist."
+    echo "Docker image $IMAGE_NAME does not exist."
     return 1
   fi
 }
@@ -47,13 +56,25 @@ configure_directory() {
 # Build Docker image
 build_docker_image() {
   echo "Building Docker image..."
-  sudo docker-compose build --no-cache -t easyearth_plugin_easyearth-server:latest
+  sudo docker-compose build --no-cache
 }
 
 # Start Docker container
 start_docker_container() {
+
+  # Configure directories
+  DATA_DIR=$(configure_directory "data directory" "$SCRIPT_DIR/data")
+  TEMP_DIR=$(configure_directory "temp directory" "$SCRIPT_DIR/tmp")
+  MODEL_DIR=$(configure_directory "model cache directory" "$SCRIPT_DIR/.cache/models")
+  LOG_DIR=$(configure_directory "logs directory" "$SCRIPT_DIR/logs")
+
+  # check if there is one running container
+  if sudo docker-compose ps -q --filter "name=$IMAGE_NAME" | grep -q .; then
+    echo "Stopping existing Docker container..."
+    sudo docker-compose down
+  fi
   echo "Starting Docker container..."
-  sudo docker-compose up -d
+  sudo TEMP_DIR="$TEMP_DIR" DATA_DIR="$DATA_DIR" LOG_DIR="$LOG_DIR" MODEL_DIR="$MODEL_DIR" docker-compose up -d
 }
 
 # Test if the server is running
@@ -79,10 +100,7 @@ main() {
     build_docker_image
   fi
 
-  DATA_DIR=$(configure_directory "data directory" "$SCRIPT_DIR/data")
-  TEMP_DIR=$(configure_directory "temp directory" "$SCRIPT_DIR/tmp")
-  MODEL_DIR=$(configure_directory "cache directory" "$SCRIPT_DIR/.cache/models")
-  LOG_DIR=$(configure_directory "logs directory" "$SCRIPT_DIR/logs")
+  create_cache_folder
 
   start_docker_container
   test_server
