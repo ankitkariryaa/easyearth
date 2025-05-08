@@ -27,7 +27,3 @@ COPY . $APP_DIR/
 EXPOSE 3781
 
 CMD ["python", "-m", "easyearth.app", "--host", "0.0.0.0", "--port", "3781"]
-
-# TODO: fix gunicorn, so far it's not working
-# ENTRYPOINT ["gunicorn"]
-# CMD ["-w", "2", "-b", "0.0.0.0:3781", "easyearth.wsgi:app"]
