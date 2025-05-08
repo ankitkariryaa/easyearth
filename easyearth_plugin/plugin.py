@@ -166,6 +166,8 @@ class EasyEarthPlugin:
         self.data_dir = self.plugin_dir + '/user'
         self.tmp_dir = os.path.join(self.plugin_dir, 'tmp')
 
+        self.model_path = None
+
     def add_action(self, icon_path, text, callback, enabled_flag=True,
                   add_to_menu=True, add_to_toolbar=True, status_tip=None,
                   whats_this=None, parent=None):
@@ -301,6 +303,7 @@ class EasyEarthPlugin:
             ])
             self.model_combo.setEditText("facebook/sam-vit-huge")  # Default
             self.model_combo.currentTextChanged.connect(self.update_drawing_enabled)
+            self.model_path = self.model_combo.currentText()
 
             model_layout.addWidget(self.model_combo)
             model_group.setLayout(model_layout)
@@ -473,8 +476,7 @@ class EasyEarthPlugin:
             self.logger.error(f"Error updating layer combo: {str(e)}")
 
     def is_sam_model(self):
-        model_path = self.model_combo.currentText().strip()
-        is_sam = model_path.startswith("facebook/sam-")
+        is_sam = self.model_path.startswith("facebook/sam-")
         return is_sam
 
     def update_drawing_enabled(self):
@@ -573,7 +575,8 @@ class EasyEarthPlugin:
                 # Check for existing embedding
                 image_name = os.path.splitext(os.path.basename(image_path))[0]
                 embedding_dir = os.path.join(self.data_dir, 'embeddings')
-                embedding_path = os.path.join(embedding_dir, f"{image_name}.pt")
+                model_version = self.model_path.replace('/', '_')
+                embedding_path = os.path.join(embedding_dir, f"{image_name}_{model_version}.pt")
 
                 if os.path.exists(embedding_path):
                     # Found existing embedding
@@ -592,7 +595,6 @@ class EasyEarthPlugin:
                 else:
                     # No existing embedding
                     self.save_embedding_radio.setChecked(True)
-                    embedding_path = os.path.join(embedding_dir, f"{image_name}.pt")
                     self.embedding_path_edit.setText(embedding_path)
                     self.embedding_path_edit.setEnabled(True)
                     self.embedding_browse_btn.setEnabled(True)
@@ -1383,6 +1385,7 @@ class EasyEarthPlugin:
                 geom = feature.geometry()
                 if prompt_type == 'Point':
                     pt = geom.asPoint()
+                    #TODO: check if the ones sent to the server are in the right order
                     prompts.append({'type': 'Point', 'data': {'points': [[int(pt.x()), int(pt.y())]]}}) # TODO: figure out labels for points, when used together with bounding boxes to remove part of the prediction masks
                 elif prompt_type == 'Box':
                     poly = geom.asPolygon()
@@ -1473,10 +1476,10 @@ class EasyEarthPlugin:
 
             # TODO: add addtional check on qgis for image path, model path and so on... not just in the controller.py
             # add the model path to the payload if not empty
-            model_path = self.model_combo.currentText().strip()
+            self.model_path = self.model_combo.currentText().strip()
             # add model_path to payload if not empty
-            if model_path:
-                payload["model_path"] = model_path
+            if self.model_path:
+                payload["model_path"] = self.model_path
 
             # Show payload in message bar
             # Use:
