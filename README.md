@@ -16,9 +16,9 @@ https://github.com/zalando/connexion
 ## Folder structure
 ```
 easyearth
-├── easyearth  -> server app
-├── easyearth_plugin  -> qgis plugin
-│   ├── easyearth  -> server app
+├── easyearth  -> server app use this as the project folder if you are only interested in the server side not the qgis plugin
+├── easyearth_plugin  -> qgis plugin use this as the project folder if you are using qgis plugin
+│   ├── easyearth  -> server app the same file as in easyearth
 │   ├── ...
 ```
 
@@ -137,5 +137,5 @@ docker volume rm $(docker volume ls -q)
 # check the logs of the container, where you can also get information on the mounted directories
 sudo docker inspect <container_id>
 # check the mounted directory in a running docker container
-sudo docker exec -it e2a9f2d600d7 ls -la /usr/src/app/.cache/models
+sudo docker exec -it <container_id_or_name> /usr/src/app
 ```

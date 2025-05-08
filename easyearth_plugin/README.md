@@ -16,9 +16,9 @@ https://github.com/zalando/connexion
 ## Folder structure
 ```
 easyearth
-├── easyearth  -> server app
-├── easyearth_plugin  -> qgis plugin
-│   ├── easyearth  -> server app
+├── easyearth  -> server app use this as the project folder if you are only interested in the server side not the qgis plugin
+├── easyearth_plugin  -> qgis plugin use this as the project folder if you are using qgis plugin
+│   ├── easyearth  -> server app the same file as in easyearth
 │   ├── ...
 ```
 
