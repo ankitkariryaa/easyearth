@@ -26,7 +26,8 @@ easyearth
 
 * Docker Compose 1.21.2+ (see https://docs.docker.com/compose/install/)
 * Python 3.6 +
-* QGIS
+* QGIS (Download from https://www.qgis.org/)
+* CUDA 12.4 + (Download from https://developer.nvidia.com/cuda-downloads)  # TODO: more information on cuda compatibility, add the blog about compatibility
 
 ## Download the project repository
 ```bash
