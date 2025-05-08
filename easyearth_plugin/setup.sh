@@ -6,6 +6,7 @@ set -e
 # Set the script's directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE_NAME="easyearth_plugin_easyearth-server"
+MODEL_DIR="~/.cache/easyearth/models"
 
 # Change the permissions of the script directory
 chmod -R 755 "$SCRIPT_DIR"
@@ -22,9 +23,9 @@ check_docker_installation() {
 
 # if not cache folder exists, create it
 create_cache_folder() {
-  if [ ! -d "~/.cache/easyearth/models" ]; then
-    mkdir -p "~/.cache/easyearth/models"
-    chmod -R 755 "~/.cache/easyearth/models"
+  if [ ! -d "$MODEL_DIR" ]; then
+    mkdir -p "$MODEL_DIR"
+    chmod -R 755 "$MODEL_DIR"
   fi
 }
 
@@ -63,10 +64,10 @@ build_docker_image() {
 start_docker_container() {
 
   # Configure directories
-  DATA_DIR=$(configure_directory "data directory" "$SCRIPT_DIR/data")
-  TEMP_DIR=$(configure_directory "temp directory" "$SCRIPT_DIR/tmp")
-  MODEL_DIR=$(configure_directory "model cache directory" "$SCRIPT_DIR/.cache/models")
-  LOG_DIR=$(configure_directory "logs directory" "$SCRIPT_DIR/logs")
+  DATA_DIR=$(configure_directory "data directory" "./data")
+  TEMP_DIR=$(configure_directory "temp directory" "./tmp")
+  MODEL_DIR=$(configure_directory "model cache directory" "$MODEL_DIR")
+  LOG_DIR=$(configure_directory "logs directory" "./logs")
 
   # check if there is one running container
   if sudo docker-compose ps -q --filter "name=$IMAGE_NAME" | grep -q .; then
