@@ -44,11 +44,18 @@ git clone https://github.com/YanCheng-go/easyearth.git
 cp -r ./easyearth/easyearth_plugin easyearth_plugin
 ```
 
-## Build the container
-
+## Set up the docker container
+This step will build the docker image and start the container with the server running.
 ```bash
 cd easyearth_plugin  # go to the directory where docker-compose.yml is located
-sudo docker-compose build  # build the container
+chmod +x ./setup.sh  # make the setup.sh executable
+./setup.sh  # run the setup.sh script
+```
+
+## Stop the docker container
+```bash
+cd easyearth_plugin  # go to the directory where docker-compose.yml is located
+sudo docker-compose down  # stop the docker container
 ```
 
 ## Install easyearth plugin on qgis
@@ -57,9 +64,14 @@ sudo docker-compose build  # build the container
 3. Reopen QGIS, click Plugins -> Manage and Install Plugins -> Installed -> click the check box before EasyEarth
 
 ## Run EasyEarth in QGIS
-1. Click Start Docker
-2. Click Browse image and select an image to play with 
-3. Click Start Drawing.
+1. Stop the docker container if it is running outside of QGIS. Open a terminal and run:
+    ```bash
+    cd easyearth_plugin  # go to the directory where docker-compose.yml is located
+    sudo docker-compose down  # stop the docker container
+    ```
+2. In QGIS, click Start Docker
+3. Click Browse image and select an image to play with 
+4. Click Start Drawing.
 
 ## Run EasyEarth outside of QGIS
 Start the docker container and send requests to the server using curl or any other HTTP client.
