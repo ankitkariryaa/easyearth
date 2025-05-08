@@ -31,7 +31,7 @@ create_cache_folder() {
 
 # Check if the docker image easyearth_plugin_easyearth-server exists, if exists return 0 else return 1
 check_docker_image() {
-  if sudo docker-compose images | grep -q "$IMAGE_NAME"; then
+  if sudo docker images | grep -q "$IMAGE_NAME"; then  # TODO: for some reason docker-compose images is not working... if using docker... need to make sure docker is installed...
     echo "Docker image $IMAGE_NAME already exists."
     return 0
   else
