@@ -18,7 +18,7 @@ setup(
     name=NAME,
     version=VERSION,
     description="Connexion example",
-    author_email="ankit.ky@gmail.com",
+    author_email="chengyan2017@gmail.com, ankit.ky@gmail.com",
     url="",
     keywords=["Swagger", "Connexion"],
     install_requires=REQUIRES,
